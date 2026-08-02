@@ -46,6 +46,9 @@ interface UazapiMessage {
   text?: string;
   caption?: string;
   content?: string;
+  base64?: string;
+  base64Data?: string;
+  mimetype?: string;
 }
 
 /**

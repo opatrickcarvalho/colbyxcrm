@@ -151,6 +151,7 @@ export interface UazapiInstance {
   paircode?: string;
   name?: string;
   profileName?: string;
+  number?: string;
 }
 
 /**
