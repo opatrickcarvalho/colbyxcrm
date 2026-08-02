@@ -1685,8 +1685,29 @@
       "saveDoc": "Save document",
       "addDoc": "Add document",
       "reindex": "Reindex",
-      "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
+      "reindexTooltip": "Reprocess embeddings for all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
     }
+  },
+  "InteractiveBuilder": {
+      "replyButtons": "Reply buttons",
+      "list": "List",
+      "body": "Body",
+      "bodyPlaceholder": "What the customer reads above the options",
+      "header": "Header (optional)",
+      "footer": "Footer (optional)",
+      "showReplyIds": "Show reply IDs (advanced)",
+      "preview": "Preview",
+      "buttonsCount": "Buttons ({count}/{max})",
+      "idPlaceholder": "id",
+      "buttonLabelPlaceholder": "Button label",
+      "addButton": "Add button",
+      "listButtonLabel": "List button label",
+      "rowsCount": "Rows ({count}/{max})",
+      "sectionTitlePlaceholder": "Section title (optional)",
+      "rowTitlePlaceholder": "Row title",
+      "rowDescriptionPlaceholder": "Description (optional)",
+      "addRow": "Add row",
+      "addSection": "Add section"
   }
 }

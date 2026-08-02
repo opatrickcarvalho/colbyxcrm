@@ -1688,5 +1688,26 @@
       "reindexTooltip": "Reprocessar embeddings de todos os documentos (ex.: depois de adicionar uma chave de embeddings)",
       "loading": "Carregando…"
     }
+  },
+  "InteractiveBuilder": {
+    "replyButtons": "Botões de resposta",
+    "list": "Lista",
+    "body": "Corpo",
+    "bodyPlaceholder": "O que o cliente lê acima das opções",
+    "header": "Cabeçalho (opcional)",
+    "footer": "Rodapé (opcional)",
+    "showReplyIds": "Mostrar IDs de resposta (avançado)",
+    "preview": "Pré-visualização",
+    "buttonsCount": "Botões ({count}/{max})",
+    "idPlaceholder": "id",
+    "buttonLabelPlaceholder": "Rótulo do botão",
+    "addButton": "Adicionar botão",
+    "listButtonLabel": "Rótulo do botão da lista",
+    "rowsCount": "Linhas ({count}/{max})",
+    "sectionTitlePlaceholder": "Título da seção (opcional)",
+    "rowTitlePlaceholder": "Título da linha",
+    "rowDescriptionPlaceholder": "Descrição (opcional)",
+    "addRow": "Adicionar linha",
+    "addSection": "Adicionar seção"
   }
 }

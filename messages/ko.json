@@ -1688,5 +1688,26 @@
       "reindexTooltip": "모든 문서를 다시 임베딩합니다 (예: 임베딩 키 추가 후)",
       "loading": "불러오는 중…"
     }
+  },
+  "InteractiveBuilder": {
+    "replyButtons": "답변 버튼",
+    "list": "목록",
+    "body": "본문",
+    "bodyPlaceholder": "고객이 옵션 위에서 읽을 내용",
+    "header": "헤더 (선택 사항)",
+    "footer": "푸터 (선택 사항)",
+    "showReplyIds": "답변 ID 표시 (고급)",
+    "preview": "미리보기",
+    "buttonsCount": "버튼 ({count}/{max})",
+    "idPlaceholder": "id",
+    "buttonLabelPlaceholder": "버튼 레이블",
+    "addButton": "버튼 추가",
+    "listButtonLabel": "목록 버튼 레이블",
+    "rowsCount": "행 ({count}/{max})",
+    "sectionTitlePlaceholder": "섹션 제목 (선택 사항)",
+    "rowTitlePlaceholder": "행 제목",
+    "rowDescriptionPlaceholder": "설명 (선택 사항)",
+    "addRow": "행 추가",
+    "addSection": "섹션 추가"
   }
 }
