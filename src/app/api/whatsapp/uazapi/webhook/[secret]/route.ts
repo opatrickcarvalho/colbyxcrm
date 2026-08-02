@@ -200,8 +200,47 @@ export async function POST(
       const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
       const contentType = toContentType(message.messageType);
-      const text = message.text || message.caption || message.content || '';
+      let text = message.text || message.caption || message.content || '';
       const providerMessageId = message.messageid || message.id || null;
+      let mediaUrl = null;
+
+      const isMedia = ['image', 'video', 'audio', 'document'].includes(contentType);
+      
+      // Some versions/providers put the base64 in .base64 or .base64Data.
+      // If it's a huge base64 string mistakenly put in .content (which causes the "huge broken link" bug), catch it too.
+      let b64Str = message.base64 || message.base64Data || (isMedia && typeof message.content === 'string' && message.content.length > 500 ? message.content : null);
+
+      if (isMedia && b64Str) {
+        if (b64Str.includes('base64,')) {
+          b64Str = b64Str.split('base64,')[1];
+        }
+
+        try {
+          const buffer = Buffer.from(b64Str, 'base64');
+          const ext = contentType === 'image' ? 'jpg' : contentType === 'video' ? 'mp4' : contentType === 'audio' ? 'mp3' : 'bin';
+          const path = `account-${config.account_id}/${Date.now()}-uazapi.${ext}`;
+          
+          const mime = message.mimetype || (contentType === 'image' ? 'image/jpeg' : 'application/octet-stream');
+          
+          const { error: upErr } = await db.storage.from('chat-media').upload(path, buffer, {
+            contentType: mime
+          });
+          
+          if (upErr) {
+            console.error('[uazapi/webhook] Failed to upload media:', upErr.message);
+          } else {
+            const { data: publicUrlData } = db.storage.from('chat-media').getPublicUrl(path);
+            mediaUrl = publicUrlData.publicUrl;
+            
+            // Clean up text if it was used to hold the base64 string
+            if (text === message.content) {
+              text = message.caption || '';
+            }
+          }
+        } catch (err) {
+          console.error('[uazapi/webhook] Error processing base64 media:', err);
+        }
+      }
 
       if (message.fromMe && providerMessageId) {
         const { data: existing } = await db
@@ -222,6 +261,7 @@ export async function POST(
         sender_type: message.fromMe ? 'agent' : 'contact',
         content_type: contentType,
         content_text: text || null,
+        media_url: mediaUrl,
         message_id: providerMessageId,
         status: message.fromMe ? 'sent' : 'received',
       });
