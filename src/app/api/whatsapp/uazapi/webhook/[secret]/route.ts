@@ -122,6 +122,7 @@ export async function POST(
   let body: UazapiWebhookBody;
   try {
     body = (await request.json()) as UazapiWebhookBody;
+    console.log('[uazapi/webhook] Received payload:', JSON.stringify(body, null, 2));
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
@@ -172,7 +173,9 @@ export async function POST(
       // and the CRM's data model is one conversation per contact.
       if (message.isGroup) continue;
 
-      const phone = jidToPhone(message.sender ?? message.chatid);
+      // In 1-on-1 chats, chatid is always the remote contact's JID.
+      // UAZAPI sometimes populates `sender` with the instance's own JID on inbound messages.
+      const phone = jidToPhone(message.chatid ?? message.sender);
       if (!phone) {
         console.warn('[uazapi/webhook] skipping message with unusable sender');
         continue;
