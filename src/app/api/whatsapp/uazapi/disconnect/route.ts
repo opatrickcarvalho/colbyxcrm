@@ -51,13 +51,13 @@ export async function POST() {
       }
     }
 
-    // Deleting the row rather than blanking it: the conditional CHECK
-    // from migration 038 requires a uazapi row to carry a token, so a
-    // half-cleared row could not be stored anyway. A fresh connect
-    // re-provisions from scratch.
+    // Instead of deleting the row, we just mark it as disconnected.
+    // This allows the next 'connect' to reuse the same UAZAPI instance
+    // rather than leaking instances on the provider. The token is kept
+    // intact to satisfy the CHECK constraint from migration 038.
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
-      .delete()
+      .update({ status: 'disconnected', updated_at: new Date().toISOString() })
       .eq('id', config.id);
 
     if (deleteError) {
@@ -67,7 +67,7 @@ export async function POST() {
       );
       return NextResponse.json(
         {
-          error: `Disconnected remotely but clearing the config failed: ${deleteError.message}`,
+          error: `Disconnected remotely but updating the config failed: ${deleteError.message}`,
         },
         { status: 500 }
       );
