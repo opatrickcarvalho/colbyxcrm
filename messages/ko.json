@@ -1572,7 +1572,12 @@
       "useMode": "{mode} 모드 사용",
       "active": "사용 중",
       "accentColor": "강조 색상",
-      "useTheme": "{name} 테마 사용"
+      "useTheme": "{name} 테마 사용",
+      "language": "언어",
+      "languageDesc": "인터페이스 전체에서 사용되는 언어입니다. 프로필에 저장되어 어떤 기기에서도 유지됩니다.",
+      "useLanguage": "{language} 사용",
+      "languageEnglish": "영어",
+      "languagePortuguese": "포르투갈어 (브라질)"
     },
     "security": {
       "title": "로그인 & 보안",

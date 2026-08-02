@@ -1572,7 +1572,12 @@
       "useMode": "Use {mode} mode",
       "active": "Active",
       "accentColor": "Accent color",
-      "useTheme": "Use {name} theme"
+      "useTheme": "Use {name} theme",
+      "language": "Language",
+      "languageDesc": "Language used across the interface. Saved to your profile — follows you on any device.",
+      "useLanguage": "Use {language}",
+      "languageEnglish": "English",
+      "languagePortuguese": "Portuguese (Brazil)"
     },
     "security": {
       "title": "Login & security",
