@@ -11,7 +11,24 @@
  */
 
 /** App-wide fallback when no account/deal currency is available. */
-export const DEFAULT_CURRENCY = "USD";
+export const DEFAULT_CURRENCY = 'USD';
+
+/**
+ * Locale every formatter in this module renders with.
+ *
+ * Passing `undefined` to `Intl.NumberFormat` means "use the runtime's
+ * default locale", which is ambient machine state rather than app
+ * state. That has a visible cost: these formatters run during SSR
+ * *and* in the browser, so a server whose locale differs from the
+ * visitor's renders the same deal value two different ways and React
+ * reports a hydration mismatch. It also makes output depend on how a
+ * container happens to be provisioned.
+ *
+ * `NEXT_PUBLIC_APP_LOCALE` is the app's own answer to "what locale are
+ * we in", and being NEXT_PUBLIC_ it is inlined identically on both
+ * sides of the render, which is what makes the output stable.
+ */
+const FORMAT_LOCALE = process.env.NEXT_PUBLIC_APP_LOCALE?.trim() || 'en';
 
 export interface CurrencyOption {
   /** ISO-4217 code, e.g. "USD". Stored verbatim in the DB. */
@@ -28,21 +45,21 @@ export interface CurrencyOption {
  * list to offer more — nothing else needs to change.
  */
 export const CURRENCIES: CurrencyOption[] = [
-  { code: "USD", label: "US Dollar", symbol: "$" },
-  { code: "EUR", label: "Euro", symbol: "€" },
-  { code: "GBP", label: "British Pound", symbol: "£" },
-  { code: "INR", label: "Indian Rupee", symbol: "₹" },
-  { code: "AUD", label: "Australian Dollar", symbol: "A$" },
-  { code: "CAD", label: "Canadian Dollar", symbol: "C$" },
-  { code: "BRL", label: "Brazilian Real", symbol: "R$" },
-  { code: "JPY", label: "Japanese Yen", symbol: "¥" },
-  { code: "CNY", label: "Chinese Yuan", symbol: "¥" },
-  { code: "AED", label: "UAE Dirham", symbol: "د.إ" },
-  { code: "ZAR", label: "South African Rand", symbol: "R" },
-  { code: "NGN", label: "Nigerian Naira", symbol: "₦" },
-  { code: "SGD", label: "Singapore Dollar", symbol: "S$" },
-  { code: "MXN", label: "Mexican Peso", symbol: "$" },
-  { code: "COP", label: "Colombian Peso", symbol: "$" },
+  { code: 'USD', label: 'US Dollar', symbol: '$' },
+  { code: 'EUR', label: 'Euro', symbol: '€' },
+  { code: 'GBP', label: 'British Pound', symbol: '£' },
+  { code: 'INR', label: 'Indian Rupee', symbol: '₹' },
+  { code: 'AUD', label: 'Australian Dollar', symbol: 'A$' },
+  { code: 'CAD', label: 'Canadian Dollar', symbol: 'C$' },
+  { code: 'BRL', label: 'Brazilian Real', symbol: 'R$' },
+  { code: 'JPY', label: 'Japanese Yen', symbol: '¥' },
+  { code: 'CNY', label: 'Chinese Yuan', symbol: '¥' },
+  { code: 'AED', label: 'UAE Dirham', symbol: 'د.إ' },
+  { code: 'ZAR', label: 'South African Rand', symbol: 'R' },
+  { code: 'NGN', label: 'Nigerian Naira', symbol: '₦' },
+  { code: 'SGD', label: 'Singapore Dollar', symbol: 'S$' },
+  { code: 'MXN', label: 'Mexican Peso', symbol: '$' },
+  { code: 'COP', label: 'Colombian Peso', symbol: '$' },
 ];
 
 /**
@@ -60,13 +77,13 @@ export const CURRENCIES: CurrencyOption[] = [
  */
 export function formatCurrency(
   value: number,
-  currency: string = DEFAULT_CURRENCY,
+  currency: string = DEFAULT_CURRENCY
 ): string {
   const code = (currency || DEFAULT_CURRENCY).trim();
   const amount = Number(value) || 0;
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
+    return new Intl.NumberFormat(FORMAT_LOCALE, {
+      style: 'currency',
       currency: code,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
@@ -74,7 +91,7 @@ export function formatCurrency(
   } catch {
     // Invalid ISO code — show the raw code + grouped number so the
     // value is still legible instead of throwing.
-    return `${code} ${new Intl.NumberFormat(undefined, {
+    return `${code} ${new Intl.NumberFormat(FORMAT_LOCALE, {
       maximumFractionDigits: 0,
     }).format(amount)}`;
   }
@@ -87,7 +104,7 @@ export function formatCurrency(
  */
 export function formatCurrencyShort(
   value: number,
-  currency: string = DEFAULT_CURRENCY,
+  currency: string = DEFAULT_CURRENCY
 ): string {
   const code = currency || DEFAULT_CURRENCY;
   const symbol = CURRENCIES.find((c) => c.code === code)?.symbol ?? `${code} `;
