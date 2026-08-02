@@ -230,6 +230,8 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
+    if (!session24hEnabled) return { expired: false, remaining: "" };
+
     if (!messages.length) return { expired: false, remaining: "" };
 
     // Find last customer message
@@ -238,8 +240,6 @@ export function MessageThread({
       .find((m) => m.sender_type === "customer");
 
     if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
-
-    if (!session24hEnabled) return { expired: false, remaining: "" };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
