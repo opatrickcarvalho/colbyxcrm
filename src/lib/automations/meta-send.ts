@@ -8,7 +8,7 @@ import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { supabaseAdmin } from './admin-client';
 
 // ------------------------------------------------------------
-// Automation-side Meta sender.
+// Automation-side provider sender.
 //
 // Mirrors the logic in src/app/api/whatsapp/send/route.ts but uses
 // the service-role client (engine has no cookies) and accepts the
@@ -45,13 +45,13 @@ interface SendTemplateArgs {
 export async function engineSendText(
   args: SendTextArgs
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendViaMeta({ ...args, kind: 'text' });
+  return sendViaProvider({ ...args, kind: 'text' });
 }
 
 export async function engineSendTemplate(
   args: SendTemplateArgs
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendViaMeta({ ...args, kind: 'template' });
+  return sendViaProvider({ ...args, kind: 'template' });
 }
 
 interface SendInteractiveArgs {
@@ -100,7 +100,7 @@ export async function engineSendInteractive(
 type SendInput =
   (SendTextArgs & { kind: 'text' }) | (SendTemplateArgs & { kind: 'template' });
 
-async function sendViaMeta(
+async function sendViaProvider(
   input: SendInput
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin();
@@ -142,6 +142,16 @@ async function sendViaMeta(
   // `deliveredTo` reports whichever variant landed.
   const provider = createProvider(config);
 
+  if (input.kind === 'template' && !provider.capabilities.templates) {
+    // Fail here, not three lines down inside `provider.sendTemplate()` —
+    // the engine's step-catch surfaces this message directly, so a
+    // UAZAPI account gets "no templates" instead of a raw
+    // ProviderUnsupportedError stack.
+    throw new Error(
+      `The "${provider.id}" provider has no message templates.`
+    );
+  }
+
   const { messageId: waMessageId, deliveredTo: workingPhone } =
     input.kind === 'template'
       ? await provider.sendTemplate({
@@ -176,9 +186,9 @@ async function sendViaMeta(
     status: 'sent',
   });
   if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`);
+    // The provider already has the message; record the DB error but
+    // don't pretend the send failed. The engine wraps this in a log line.
+    throw new Error(`sent via WhatsApp but DB insert failed: ${msgErr.message}`);
   }
 
   await db

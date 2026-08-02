@@ -110,6 +110,8 @@ interface MessageThreadProps {
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
   session24hEnabled?: boolean;
+  /** Whether the connected provider supports pre-approved templates (Meta: yes, UAZAPI: no). */
+  templatesEnabled?: boolean;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -169,6 +171,7 @@ export function MessageThread({
   contactPanelOpen,
   onToggleContactPanel,
   session24hEnabled = true,
+  templatesEnabled = true,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1157,6 +1160,7 @@ export function MessageThread({
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
+        templatesEnabled={templatesEnabled}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}

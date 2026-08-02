@@ -25,8 +25,8 @@ import {
   isRecipientNotAllowedError,
   phoneVariants,
 } from '@/lib/whatsapp/phone-utils';
+import { META_CAPABILITIES } from './capabilities';
 import type {
-  ProviderCapabilities,
   ProviderSendResult,
   SendInteractiveButtonsArgs,
   SendInteractiveListArgs,
@@ -37,13 +37,7 @@ import type {
   WhatsAppProvider,
 } from './types';
 
-export const META_CAPABILITIES: ProviderCapabilities = {
-  templates: true,
-  interactive: true,
-  reactions: true,
-  session24h: true,
-  inboundMediaNeedsFetch: true,
-};
+export { META_CAPABILITIES };
 
 export interface MetaProviderCredentials {
   phoneNumberId: string;

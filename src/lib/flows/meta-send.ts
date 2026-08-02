@@ -9,7 +9,7 @@ import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { supabaseAdmin } from './admin-client';
 
 // ------------------------------------------------------------
-// Flows-side Meta sender (interactive variants).
+// Flows-side provider sender (interactive variants).
 //
 // Mirrors src/lib/automations/meta-send.ts (engineSendText /
 // engineSendTemplate) but emits interactive button + list messages.
@@ -106,7 +106,7 @@ export async function engineSendText(
     ai_generated: args.aiGenerated ?? false,
   });
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`);
+    throw new Error(`sent via WhatsApp but DB insert failed: ${msgErr.message}`);
   }
 
   await db
@@ -203,7 +203,7 @@ export async function engineSendMedia(
     status: 'sent',
   });
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`);
+    throw new Error(`sent via WhatsApp but DB insert failed: ${msgErr.message}`);
   }
 
   await db
@@ -255,7 +255,7 @@ interface SendInteractiveListEngineArgs {
 export async function engineSendInteractiveButtons(
   args: SendInteractiveButtonsEngineArgs
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendInteractiveViaMeta({ ...args, kind: 'buttons' });
+  return sendInteractiveViaProvider({ ...args, kind: 'buttons' });
 }
 
 /**
@@ -265,14 +265,14 @@ export async function engineSendInteractiveButtons(
 export async function engineSendInteractiveList(
   args: SendInteractiveListEngineArgs
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendInteractiveViaMeta({ ...args, kind: 'list' });
+  return sendInteractiveViaProvider({ ...args, kind: 'list' });
 }
 
 type SendInput =
   | (SendInteractiveButtonsEngineArgs & { kind: 'buttons' })
   | (SendInteractiveListEngineArgs & { kind: 'list' });
 
-async function sendInteractiveViaMeta(
+async function sendInteractiveViaProvider(
   input: SendInput
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin();
@@ -370,7 +370,7 @@ async function sendInteractiveViaMeta(
     status: 'sent',
   });
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`);
+    throw new Error(`sent via WhatsApp but DB insert failed: ${msgErr.message}`);
   }
 
   await db

@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation';
 import { runInboundSideEffects } from '@/lib/whatsapp/inbound/side-effects';
+import { isValidStatusTransition } from '@/lib/whatsapp/status-ladder';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -49,6 +51,36 @@ interface UazapiMessage {
   base64?: string;
   base64Data?: string;
   mimetype?: string;
+  /** Present on `messages_update` events (delivery/read ticks). */
+  status?: string;
+}
+
+/**
+ * Map uazapi's delivery-status vocabulary (Queued/Sent/Delivered/Read/
+ * Failed/Canceled, per the OpenAPI spec's Message.status enum) onto
+ * the values the `messages.status` CHECK constraint accepts
+ * (migration 001). Unrecognised values return null so the caller can
+ * skip the update rather than writing an invalid enum value — the
+ * exact bug fixed in the inbound-message path above.
+ */
+function toMessagesStatus(status: string | undefined): string | null {
+  switch ((status || '').toLowerCase()) {
+    case 'queued':
+      return 'sending';
+    case 'sent':
+      return 'sent';
+    case 'delivered':
+      return 'delivered';
+    case 'read':
+    case 'played':
+      return 'read';
+    case 'failed':
+    case 'canceled':
+    case 'cancelled':
+      return 'failed';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -159,6 +191,101 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
+  // Delivery/read ticks for messages we sent. `registerWebhook()`
+  // (providers/uazapi.ts) subscribes to this event; without this
+  // branch it fell into the generic "ignored" bucket below and
+  // messages.status never advanced past 'sent'.
+  if (event === 'messages_update') {
+    for (const message of messagesFrom(body)) {
+      try {
+        const providerMessageId = message.messageid || message.id || null;
+        const mappedStatus = toMessagesStatus(message.status);
+        if (!providerMessageId || !mappedStatus) continue;
+
+        // 1) Mirror onto messages. No `.select()`: message_id is not
+        // unique across the table (numbers can repeat ids), so this
+        // updates 0..N rows — same shape as the Meta webhook's own
+        // handleStatusUpdate.
+        const { error: msgErr } = await db
+          .from('messages')
+          .update({ status: mappedStatus })
+          .eq('message_id', providerMessageId);
+        if (msgErr) {
+          console.error(
+            '[uazapi/webhook] messages_update: message status update failed:',
+            msgErr.message
+          );
+        }
+
+        // 2) Mirror onto broadcast_recipients, forward-only on the
+        // ladder — a UAZAPI-connected account can still run
+        // broadcasts (broadcast-core.ts sends through whichever
+        // provider is configured), so its recipients need the same
+        // status mirror Meta's path already gets.
+        const { data: recipient, error: recFetchErr } = await db
+          .from('broadcast_recipients')
+          .select('id, status')
+          .eq('whatsapp_message_id', providerMessageId)
+          .maybeSingle();
+
+        if (recFetchErr) {
+          console.error(
+            '[uazapi/webhook] messages_update: broadcast recipient fetch failed:',
+            recFetchErr.message
+          );
+        } else if (
+          recipient &&
+          isValidStatusTransition(recipient.status, mappedStatus)
+        ) {
+          const tsIso = new Date().toISOString();
+          const update: Record<string, unknown> = { status: mappedStatus };
+          if (mappedStatus === 'sent') update.sent_at = tsIso;
+          if (mappedStatus === 'delivered') update.delivered_at = tsIso;
+          if (mappedStatus === 'read') update.read_at = tsIso;
+
+          const { error: recUpdateErr } = await db
+            .from('broadcast_recipients')
+            .update(update)
+            .eq('id', recipient.id);
+          if (recUpdateErr) {
+            console.error(
+              '[uazapi/webhook] messages_update: broadcast recipient update failed:',
+              recUpdateErr.message
+            );
+          }
+        }
+
+        // 3) Webhook fan-out, for parity with the Meta path's public
+        // API. Bounded to one row purely to resolve the owning
+        // conversation/account.
+        const { data: msgRow } = await db
+          .from('messages')
+          .select('conversation_id')
+          .eq('message_id', providerMessageId)
+          .limit(1)
+          .maybeSingle();
+        if (msgRow) {
+          await dispatchWebhookEvent(
+            db,
+            config.account_id,
+            'message.status_updated',
+            {
+              whatsapp_message_id: providerMessageId,
+              conversation_id: msgRow.conversation_id,
+              status: mappedStatus,
+            }
+          );
+        }
+      } catch (err) {
+        console.error(
+          '[uazapi/webhook] failed to process a messages_update entry:',
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (event !== 'messages' && event !== 'message') {
     return NextResponse.json({ ok: true, ignored: event });
   }
@@ -199,7 +326,7 @@ export async function POST(
         .from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
-        .eq('sender_type', 'contact');
+        .eq('sender_type', 'customer');
       const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
       const contentType = toContentType(message.messageType);
@@ -261,12 +388,12 @@ export async function POST(
 
       const { error: insertError } = await db.from('messages').insert({
         conversation_id: conversationId,
-        sender_type: message.fromMe ? 'agent' : 'contact',
+        sender_type: message.fromMe ? 'agent' : 'customer',
         content_type: contentType,
         content_text: text || null,
         media_url: mediaUrl,
         message_id: providerMessageId,
-        status: message.fromMe ? 'sent' : 'received',
+        status: message.fromMe ? 'sent' : 'delivered',
       });
 
       if (insertError) {

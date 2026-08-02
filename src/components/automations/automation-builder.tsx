@@ -62,6 +62,8 @@ import {
 } from "@/components/interactive/interactive-builder"
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
 import { createClient } from "@/lib/supabase/client"
+import { getCapabilities } from "@/lib/whatsapp/providers/capabilities"
+import { isProviderId } from "@/lib/whatsapp/providers/types"
 import { cn } from "@/lib/utils"
 
 // ------------------------------------------------------------
@@ -210,6 +212,8 @@ interface AutomationResources {
   customFields: CustomField[]
   pipelines: PipelineOption[]
   stages: PipelineStageOption[]
+  /** Whether the account's connected WhatsApp provider supports templates (Meta: yes, UAZAPI: no). */
+  templatesEnabled: boolean
 }
 
 interface PipelineOption {
@@ -231,6 +235,7 @@ const ResourcesContext = createContext<AutomationResources>({
   customFields: [],
   pipelines: [],
   stages: [],
+  templatesEnabled: true,
 })
 
 function useResources(): AutomationResources {
@@ -244,10 +249,35 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  const [templatesEnabled, setTemplatesEnabled] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     const supabase = createClient()
+
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("account_id")
+        .eq("user_id", user.id)
+        .maybeSingle()
+      const accountId = profile?.account_id as string | undefined
+      if (!accountId) return
+      const { data: config } = await supabase
+        .from("whatsapp_config")
+        .select("provider")
+        .eq("account_id", accountId)
+        .maybeSingle()
+      if (cancelled) return
+      setTemplatesEnabled(
+        getCapabilities(isProviderId(config?.provider) ? config.provider : "meta")
+          .templates,
+      )
+    })()
 
     // Tags, templates and custom fields come straight from the DB — RLS
     // scopes them to the caller's account. Only APPROVED templates can
@@ -298,7 +328,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages }}
+      value={{ tags, members, templates, customFields, pipelines, stages, templatesEnabled }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -1234,6 +1264,10 @@ function BranchColumn({
 
 function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
   const t = useTranslations("Automations.builder")
+  const { templatesEnabled } = useResources()
+  const addableSteps = templatesEnabled
+    ? ADDABLE_STEPS
+    : ADDABLE_STEPS.filter((tp) => tp !== "send_template")
   return (
     <div className="relative flex flex-col items-center">
       <div className="h-4 w-[2px] bg-border" aria-hidden />
@@ -1248,7 +1282,7 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
           align="start"
           className="max-h-80 min-w-56 overflow-y-auto border-border bg-popover"
         >
-          {ADDABLE_STEPS.map((tp) => {
+          {addableSteps.map((tp) => {
             const Icon = STEP_META[tp].icon
             return (
               <DropdownMenuItem key={tp} onClick={() => onPick(tp)}>

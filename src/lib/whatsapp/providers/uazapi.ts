@@ -33,9 +33,9 @@
 // ============================================================
 
 import type { InteractiveListSection } from '@/lib/whatsapp/meta-api';
+import { UAZAPI_CAPABILITIES } from './capabilities';
 import {
   ProviderUnsupportedError,
-  type ProviderCapabilities,
   type ProviderSendResult,
   type SendInteractiveButtonsArgs,
   type SendInteractiveListArgs,
@@ -45,15 +45,7 @@ import {
   type WhatsAppProvider,
 } from './types';
 
-export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
-  templates: false,
-  interactive: true,
-  reactions: true,
-  session24h: false,
-  // /message/download resolves the bytes from the message id directly,
-  // so there is no separate media-id indirection to proxy.
-  inboundMediaNeedsFetch: false,
-};
+export { UAZAPI_CAPABILITIES };
 
 /** uazapi's own connection states, mirrored by whatsapp_config.status. */
 export type UazapiStatus =

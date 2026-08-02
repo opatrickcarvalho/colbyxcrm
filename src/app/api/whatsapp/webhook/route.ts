@@ -7,6 +7,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { runInboundSideEffects } from '@/lib/whatsapp/inbound/side-effects';
+import { isValidStatusTransition } from '@/lib/whatsapp/status-ladder';
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -316,48 +317,6 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
     }
   }
-}
-
-// The happy-path status ladder — pending → sent → delivered → read →
-// replied. Webhook replays must never regress a recipient back down
-// this ladder.
-//
-// `failed` is NOT on this ladder. It's a terminal side branch that is
-// only valid from the early states (pending / sent) — once Meta has
-// delivered or the user has read or replied, a later "failed" status
-// event is a bug in Meta's pipeline or a spoof attempt and must be
-// ignored.
-const RECIPIENT_STATUS_LADDER = [
-  'pending',
-  'sent',
-  'delivered',
-  'read',
-  'replied',
-] as const;
-
-function ladderLevel(s: string): number {
-  const idx = (RECIPIENT_STATUS_LADDER as readonly string[]).indexOf(s);
-  return idx < 0 ? -1 : idx;
-}
-
-/**
- * Can a recipient transition from `current` to `incoming`?
- *   - Along the ladder, only forward moves are allowed.
- *   - `failed` is accepted only from `pending` or `sent`; it's refused
- *     once the recipient has reached any of the success states.
- */
-function isValidStatusTransition(current: string, incoming: string): boolean {
-  if (incoming === 'failed') {
-    return current === 'pending' || current === 'sent';
-  }
-  if (current === 'failed') {
-    return false; // failed is terminal
-  }
-  const ci = ladderLevel(current);
-  const ii = ladderLevel(incoming);
-  if (ii < 0) return false; // unknown incoming status
-  if (ci < 0) return true; // unknown current — accept anything on the ladder
-  return ii > ci;
 }
 
 async function handleStatusUpdate(status: {

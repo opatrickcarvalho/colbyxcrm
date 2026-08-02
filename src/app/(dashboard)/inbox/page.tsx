@@ -9,6 +9,11 @@ import {
   normalizeConversation,
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
+import {
+  getCapabilities,
+  type ProviderCapabilities,
+} from "@/lib/whatsapp/providers/capabilities";
+import { isProviderId } from "@/lib/whatsapp/providers/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
@@ -51,7 +56,11 @@ function InboxPageInner() {
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
-  const [whatsappProvider, setWhatsappProvider] = useState<string>("meta");
+  // `null` until the config fetch resolves — callers must treat "not
+  // yet known" as its own state rather than defaulting to either
+  // provider's capabilities (see the `session24hEnabled` prop below).
+  const [capabilities, setCapabilities] =
+    useState<ProviderCapabilities | null>(null);
   /**
    * Bumped whenever we want children (ConversationList, MessageThread)
    * to refetch from the DB — used as a safety net against missed
@@ -208,7 +217,9 @@ function InboxPageInner() {
         .maybeSingle();
 
       setWhatsappConnected(data?.status === "connected");
-      if (data?.provider) setWhatsappProvider(data.provider);
+      setCapabilities(
+        getCapabilities(isProviderId(data?.provider) ? data.provider : "meta")
+      );
     };
 
     checkConnection();
@@ -625,7 +636,8 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
-            session24hEnabled={whatsappProvider !== "uazapi"}
+            session24hEnabled={capabilities?.session24h ?? false}
+            templatesEnabled={capabilities?.templates ?? false}
           />
         </div>
 

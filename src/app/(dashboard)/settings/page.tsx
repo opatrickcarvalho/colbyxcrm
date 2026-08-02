@@ -1,11 +1,14 @@
 'use client';
 
-import { Suspense, useMemo, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
+import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
+import { getCapabilities } from '@/lib/whatsapp/providers/capabilities';
+import { isProviderId } from '@/lib/whatsapp/providers/types';
 import { SettingsRail } from '@/components/settings/settings-rail';
 import { SettingsOverview } from '@/components/settings/settings-overview';
 import { ProfileForm } from '@/components/settings/profile-form';
@@ -58,6 +61,63 @@ function SettingsPageInner() {
     router.replace(`/settings?${params.toString()}`, { scroll: false });
   };
 
+  // `null` until the account's provider config resolves. Templates is a
+  // Meta-only concept (pre-approved message templates for the 24h
+  // customer-service window) — UAZAPI has no such feature, so the tab
+  // is hidden rather than shown-but-broken for those accounts.
+  const [templatesEnabled, setTemplatesEnabled] = useState<boolean | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCapabilities = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      const accountId = profile?.account_id as string | undefined;
+      if (!accountId) return;
+
+      const { data: config } = await supabase
+        .from('whatsapp_config')
+        .select('provider')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      setTemplatesEnabled(
+        getCapabilities(isProviderId(config?.provider) ? config.provider : 'meta')
+          .templates,
+      );
+    };
+    loadCapabilities();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Defend against a stale/bookmarked `?tab=templates` link on an
+  // account whose provider doesn't support templates.
+  useEffect(() => {
+    if (templatesEnabled === false && section === 'templates') {
+      go('overview');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templatesEnabled, section]);
+
+  const hiddenSections = useMemo(
+    () => (templatesEnabled === false ? (['templates'] as const) : []),
+    [templatesEnabled],
+  );
+
   // Cheap, fetch-free rail hints. The Overview landing carries the
   // full live status/counts; the rail just surfaces the two that are
   // already in context.
@@ -95,7 +155,12 @@ function SettingsPageInner() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
-        <SettingsRail active={section} onSelect={go} hints={hints} />
+        <SettingsRail
+          active={section}
+          onSelect={go}
+          hints={hints}
+          hiddenSections={hiddenSections}
+        />
         <div className="min-w-0">{panel[section]}</div>
       </div>
     </div>
