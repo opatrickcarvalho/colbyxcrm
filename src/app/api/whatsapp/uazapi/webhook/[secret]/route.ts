@@ -162,13 +162,11 @@ export async function POST(
 
   for (const message of messagesFrom(body)) {
     try {
-      // Our own sends echo back through this event. The webhook is
-      // registered with excludeMessages: ['wasSentByApi'], but that
-      // filter lives on uazapi's side and can be edited away; without
-      // this check every outbound message would duplicate itself in
-      // the thread moments after being sent.
-      if (message.fromMe) continue;
-
+      // UAZAPI is registered with excludeMessages: ['wasSentByApi'], but 
+      // if that filter is edited away, API sends will echo back here.
+      // We will deduplicate them below instead of blindly ignoring all `fromMe` messages,
+      // so that messages sent natively from the phone app are captured in the CRM.
+      
       // Group chats have no single contact to attribute a message to,
       // and the CRM's data model is one conversation per contact.
       if (message.isGroup) continue;
@@ -205,13 +203,27 @@ export async function POST(
       const text = message.text || message.caption || message.content || '';
       const providerMessageId = message.messageid || message.id || null;
 
+      if (message.fromMe && providerMessageId) {
+        const { data: existing } = await db
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('message_id', providerMessageId)
+          .maybeSingle();
+
+        if (existing) {
+          // This message was already inserted when sent via the CRM API.
+          continue;
+        }
+      }
+
       const { error: insertError } = await db.from('messages').insert({
         conversation_id: conversationId,
-        sender_type: 'contact',
+        sender_type: message.fromMe ? 'agent' : 'contact',
         content_type: contentType,
         content_text: text || null,
         message_id: providerMessageId,
-        status: 'received',
+        status: message.fromMe ? 'sent' : 'received',
       });
 
       if (insertError) {
@@ -244,22 +256,25 @@ export async function POST(
       // the public-API `message.received` event. Shared verbatim with
       // the Meta webhook so an inbound behaves identically on both
       // providers.
-      await runInboundSideEffects({
-        accountId: config.account_id,
-        configOwnerUserId: config.user_id,
-        contactId,
-        conversationId,
-        providerMessageId: providerMessageId ?? '',
-        contentType,
-        contentText: text,
-        // UAZAPI delivers button/list taps as ordinary text (the choice
-        // ids ride in the `choices` string we sent, and the reply comes
-        // back as its title). Until that round-trip is decoded there is
-        // no reply id to pass, so taps behave as text here.
-        interactiveReplyId: null,
-        isFirstInboundMessage,
-        contactWasCreated: contactCreated,
-      });
+      // Note: We only run these side-effects for true inbound messages from contacts.
+      if (!message.fromMe) {
+        await runInboundSideEffects({
+          accountId: config.account_id,
+          configOwnerUserId: config.user_id,
+          contactId,
+          conversationId,
+          providerMessageId: providerMessageId ?? '',
+          contentType,
+          contentText: text,
+          // UAZAPI delivers button/list taps as ordinary text (the choice
+          // ids ride in the `choices` string we sent, and the reply comes
+          // back as its title). Until that round-trip is decoded there is
+          // no reply id to pass, so taps behave as text here.
+          interactiveReplyId: null,
+          isFirstInboundMessage,
+          contactWasCreated: contactCreated,
+        });
+      }
     } catch (err) {
       // One malformed message must not cost us the rest of the batch.
       console.error(
