@@ -5,6 +5,8 @@ import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
 import { runInboundSideEffects } from '@/lib/whatsapp/inbound/side-effects';
 import { isValidStatusTransition } from '@/lib/whatsapp/status-ladder';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { createUazapiProvider } from '@/lib/whatsapp/providers/uazapi';
+import { decrypt } from '@/lib/whatsapp/encryption';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -128,6 +130,38 @@ function messagesFrom(body: UazapiWebhookBody): UazapiMessage[] {
   return [];
 }
 
+/**
+ * File extension for a resolved mime type, falling back to a
+ * reasonable default per content_type when the mime is unrecognised
+ * (audio in particular must not default to `mp3` — voice notes come
+ * back as `audio/ogg`, and forcing an mp3 extension on ogg bytes is
+ * why some players refused to open the file).
+ */
+function extFromMime(mime: string, contentType: string): string {
+  const base = mime.split(';')[0]?.trim().toLowerCase();
+  const known: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/3gpp': '3gp',
+    'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+    'audio/amr': 'amr',
+    'application/pdf': 'pdf',
+  };
+  if (base && known[base]) return known[base];
+  const guessed = base?.split('/')[1];
+  if (guessed) return guessed;
+  if (contentType === 'image') return 'jpg';
+  if (contentType === 'video') return 'mp4';
+  if (contentType === 'audio') return 'ogg';
+  return 'bin';
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ secret: string }> }
@@ -146,7 +180,9 @@ export async function POST(
     .from('whatsapp_config')
     // user_id is the sender-of-record the downstream inserts need for
     // their NOT NULL FKs — same role it plays on the Meta path.
-    .select('id, account_id, user_id, provider, status')
+    // uazapi_host/uazapi_instance_token are needed to resolve inbound
+    // media via /message/download (see the media-handling block below).
+    .select('id, account_id, user_id, provider, status, uazapi_host, uazapi_instance_token')
     .eq('webhook_secret', secret)
     .maybeSingle();
 
@@ -330,45 +366,75 @@ export async function POST(
       const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
       const contentType = toContentType(message.messageType);
-      let text = message.text || message.caption || message.content || '';
-      const providerMessageId = message.messageid || message.id || null;
-      let mediaUrl = null;
-
       const isMedia = ['image', 'video', 'audio', 'document'].includes(contentType);
-      
-      // Some versions/providers put the base64 in .base64 or .base64Data.
-      // If it's a huge base64 string mistakenly put in .content (which causes the "huge broken link" bug), catch it too.
-      let b64Str = message.base64 || message.base64Data || (isMedia && typeof message.content === 'string' && message.content.length > 500 ? message.content : null);
+      // `content` on a media message is WhatsApp's own (often
+      // JSON-shaped) media envelope — a `.enc` CDN URL plus the
+      // decryption key, not text a human should ever see. Falling back
+      // to it here was the "giant link" bug: nothing downstream could
+      // render that string usefully, so it got stored as message text
+      // verbatim. Only a real caption belongs in a media message's text.
+      const text = isMedia
+        ? message.caption || ''
+        : message.text || message.caption || message.content || '';
+      const providerMessageId = message.messageid || message.id || null;
+      let mediaUrl: string | null = null;
 
-      if (isMedia && b64Str) {
-        if (b64Str.includes('base64,')) {
-          b64Str = b64Str.split('base64,')[1];
-        }
-
+      if (isMedia) {
         try {
-          const buffer = Buffer.from(b64Str, 'base64');
-          const ext = contentType === 'image' ? 'jpg' : contentType === 'video' ? 'mp4' : contentType === 'audio' ? 'mp3' : 'bin';
+          let buffer: Buffer;
+          let mime: string;
+
+          // Some uazapi deployments do send the bytes inline; prefer
+          // that fast path when present.
+          let b64Str = message.base64 || message.base64Data || null;
+          if (b64Str) {
+            if (b64Str.includes('base64,')) {
+              b64Str = b64Str.split('base64,')[1];
+            }
+            buffer = Buffer.from(b64Str, 'base64');
+            mime = message.mimetype || 'application/octet-stream';
+          } else if (providerMessageId) {
+            // The common case: no inline bytes, just the encrypted
+            // envelope above. uazapi's own /message/download endpoint
+            // does the decryption server-side and hands back a
+            // fetchable URL — this is the same call the outbound
+            // media-proxy route uses, wrapped by the provider adapter.
+            if (!config.uazapi_host || !config.uazapi_instance_token) {
+              throw new Error('uazapi host/instance token missing on config row');
+            }
+            const provider = createUazapiProvider({
+              host: config.uazapi_host,
+              token: decrypt(config.uazapi_instance_token),
+            });
+            const resolved = await provider.fetchInboundMedia(providerMessageId);
+            buffer = resolved.buffer;
+            mime = resolved.contentType;
+          } else {
+            throw new Error('media message has neither inline bytes nor a message id to download');
+          }
+
+          const ext = extFromMime(mime, contentType);
           const path = `account-${config.account_id}/${Date.now()}-uazapi.${ext}`;
-          
-          const mime = message.mimetype || (contentType === 'image' ? 'image/jpeg' : 'application/octet-stream');
-          
+
           const { error: upErr } = await db.storage.from('chat-media').upload(path, buffer, {
             contentType: mime
           });
-          
+
           if (upErr) {
             console.error('[uazapi/webhook] Failed to upload media:', upErr.message);
           } else {
             const { data: publicUrlData } = db.storage.from('chat-media').getPublicUrl(path);
             mediaUrl = publicUrlData.publicUrl;
-            
-            // Clean up text if it was used to hold the base64 string
-            if (text === message.content) {
-              text = message.caption || '';
-            }
           }
         } catch (err) {
-          console.error('[uazapi/webhook] Error processing base64 media:', err);
+          // No media_url and an empty/caption-only text is a message
+          // the UI shows as "unavailable" rather than a broken giant
+          // link — a strict improvement over the old failure mode even
+          // when the download itself fails (bad token, expired link).
+          console.error(
+            '[uazapi/webhook] failed to resolve inbound media:',
+            err instanceof Error ? err.message : err
+          );
         }
       }
 
