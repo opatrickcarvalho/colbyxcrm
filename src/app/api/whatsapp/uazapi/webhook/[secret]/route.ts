@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation';
+import { runInboundSideEffects } from '@/lib/whatsapp/inbound/side-effects';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -108,7 +109,9 @@ export async function POST(
 
   const { data: config } = await db
     .from('whatsapp_config')
-    .select('id, account_id, provider, status')
+    // user_id is the sender-of-record the downstream inserts need for
+    // their NOT NULL FKs — same role it plays on the Meta path.
+    .select('id, account_id, user_id, provider, status')
     .eq('webhook_secret', secret)
     .maybeSingle();
 
@@ -175,12 +178,25 @@ export async function POST(
         continue;
       }
 
-      const { conversationId } = await resolveConversationByPhone(
-        db,
-        config.account_id,
-        phone,
-        message.senderName ?? null
-      );
+      const { conversationId, contactId, contactCreated } =
+        await resolveConversationByPhone(
+          db,
+          config.account_id,
+          phone,
+          message.senderName ?? null
+        );
+
+      // "First ever inbound from this contact" has to be counted BEFORE
+      // the insert below, or the message we are about to store would
+      // count itself and the trigger would never fire. Existing contacts
+      // matter here too — someone added by CSV import can still be
+      // sending for the first time.
+      const { count: priorInboundCount } = await db
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conversationId)
+        .eq('sender_type', 'contact');
+      const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
       const contentType = toContentType(message.messageType);
       const text = message.text || message.caption || message.content || '';
@@ -219,6 +235,28 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq('id', conversationId);
+
+      // The half that makes this a CRM rather than a message log:
+      // Flows, automations, AI auto-reply, broadcast reply tracking and
+      // the public-API `message.received` event. Shared verbatim with
+      // the Meta webhook so an inbound behaves identically on both
+      // providers.
+      await runInboundSideEffects({
+        accountId: config.account_id,
+        configOwnerUserId: config.user_id,
+        contactId,
+        conversationId,
+        providerMessageId: providerMessageId ?? '',
+        contentType,
+        contentText: text,
+        // UAZAPI delivers button/list taps as ordinary text (the choice
+        // ids ride in the `choices` string we sent, and the reply comes
+        // back as its title). Until that round-trip is decoded there is
+        // no reply id to pass, so taps behave as text here.
+        interactiveReplyId: null,
+        isFirstInboundMessage,
+        contactWasCreated: contactCreated,
+      });
     } catch (err) {
       // One malformed message must not cost us the rest of the batch.
       console.error(

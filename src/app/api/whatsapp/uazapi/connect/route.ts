@@ -32,7 +32,7 @@ import {
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId } = await requireRole('admin');
+    const { supabase, accountId, userId } = await requireRole('admin');
 
     if (!isUazapiEnabled()) {
       // The deployment does not offer this provider at all — distinct
@@ -109,6 +109,12 @@ export async function POST(request: Request) {
       .upsert(
         {
           account_id: accountId,
+          // NOT NULL since migration 001. Tenancy runs off `account_id`
+          // (migration 017) — this column is the audit trail of which
+          // member last wired the connection up, so it tracks whoever
+          // ran this connect rather than being preserved from the row
+          // that was there before.
+          user_id: userId,
           provider: 'uazapi',
           uazapi_host: host,
           uazapi_instance_id: instanceId,
