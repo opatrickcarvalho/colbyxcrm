@@ -109,6 +109,7 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  session24hEnabled?: boolean;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -167,6 +168,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  session24hEnabled = true,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -236,6 +238,8 @@ export function MessageThread({
       .find((m) => m.sender_type === "customer");
 
     if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
+
+    if (!session24hEnabled) return { expired: false, remaining: "" };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
