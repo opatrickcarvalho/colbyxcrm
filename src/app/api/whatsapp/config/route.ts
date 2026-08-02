@@ -6,6 +6,7 @@ import {
   subscribeWabaToApp,
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
+import { instanceStatus } from '@/lib/whatsapp/providers/uazapi'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 
 /**
@@ -87,7 +88,7 @@ export async function GET() {
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('phone_number_id, access_token, status')
+      .select('phone_number_id, access_token, status, provider, uazapi_host, uazapi_instance_token')
       .eq('account_id', accountId)
       .maybeSingle()
 
@@ -108,6 +109,39 @@ export async function GET() {
         },
         { status: 200 }
       )
+    }
+
+    if (config.provider === 'uazapi') {
+      let phoneInfo = null
+      
+      if (config.status === 'connected' && config.uazapi_host && config.uazapi_instance_token) {
+        try {
+          const uazToken = decrypt(config.uazapi_instance_token)
+          const instance = await instanceStatus(config.uazapi_host, uazToken)
+          phoneInfo = {
+            id: instance.number || 'uazapi',
+            display_phone_number: instance.number || 'UAZAPI Connected',
+            verified_name: instance.profileName || instance.name || 'UAZAPI Instance',
+            quality_rating: 'GREEN'
+          }
+        } catch (err) {
+          console.error('[whatsapp/config GET] UAZAPI verification failed:', err)
+          return NextResponse.json(
+            {
+              connected: false,
+              reason: 'uazapi_error',
+              message: 'Failed to connect to UAZAPI provider.',
+            },
+            { status: 200 }
+          )
+        }
+      }
+
+      return NextResponse.json({
+        connected: config.status === 'connected',
+        provider: 'uazapi',
+        phone_info: phoneInfo
+      })
     }
 
     // Try to decrypt the stored token with the current ENCRYPTION_KEY.
