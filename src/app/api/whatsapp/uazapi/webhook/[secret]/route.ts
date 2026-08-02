@@ -182,7 +182,9 @@ export async function POST(
     // their NOT NULL FKs — same role it plays on the Meta path.
     // uazapi_host/uazapi_instance_token are needed to resolve inbound
     // media via /message/download (see the media-handling block below).
-    .select('id, account_id, user_id, provider, status, uazapi_host, uazapi_instance_token')
+    .select(
+      'id, account_id, user_id, provider, status, uazapi_host, uazapi_instance_token'
+    )
     .eq('webhook_secret', secret)
     .maybeSingle();
 
@@ -193,7 +195,10 @@ export async function POST(
   let body: UazapiWebhookBody;
   try {
     body = (await request.json()) as UazapiWebhookBody;
-    console.log('[uazapi/webhook] Received payload:', JSON.stringify(body, null, 2));
+    console.log(
+      '[uazapi/webhook] Received payload:',
+      JSON.stringify(body, null, 2)
+    );
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
@@ -328,11 +333,11 @@ export async function POST(
 
   for (const message of messagesFrom(body)) {
     try {
-      // UAZAPI is registered with excludeMessages: ['wasSentByApi'], but 
+      // UAZAPI is registered with excludeMessages: ['wasSentByApi'], but
       // if that filter is edited away, API sends will echo back here.
       // We will deduplicate them below instead of blindly ignoring all `fromMe` messages,
       // so that messages sent natively from the phone app are captured in the CRM.
-      
+
       // Group chats have no single contact to attribute a message to,
       // and the CRM's data model is one conversation per contact.
       if (message.isGroup) continue;
@@ -366,7 +371,9 @@ export async function POST(
       const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
       const contentType = toContentType(message.messageType);
-      const isMedia = ['image', 'video', 'audio', 'document'].includes(contentType);
+      const isMedia = ['image', 'video', 'audio', 'document'].includes(
+        contentType
+      );
       // `content` on a media message is WhatsApp's own (often
       // JSON-shaped) media envelope — a `.enc` CDN URL plus the
       // decryption key, not text a human should ever see. Falling back
@@ -400,30 +407,42 @@ export async function POST(
             // fetchable URL — this is the same call the outbound
             // media-proxy route uses, wrapped by the provider adapter.
             if (!config.uazapi_host || !config.uazapi_instance_token) {
-              throw new Error('uazapi host/instance token missing on config row');
+              throw new Error(
+                'uazapi host/instance token missing on config row'
+              );
             }
             const provider = createUazapiProvider({
               host: config.uazapi_host,
               token: decrypt(config.uazapi_instance_token),
             });
-            const resolved = await provider.fetchInboundMedia(providerMessageId);
+            const resolved =
+              await provider.fetchInboundMedia(providerMessageId);
             buffer = resolved.buffer;
             mime = resolved.contentType;
           } else {
-            throw new Error('media message has neither inline bytes nor a message id to download');
+            throw new Error(
+              'media message has neither inline bytes nor a message id to download'
+            );
           }
 
           const ext = extFromMime(mime, contentType);
           const path = `account-${config.account_id}/${Date.now()}-uazapi.${ext}`;
 
-          const { error: upErr } = await db.storage.from('chat-media').upload(path, buffer, {
-            contentType: mime
-          });
+          const { error: upErr } = await db.storage
+            .from('chat-media')
+            .upload(path, buffer, {
+              contentType: mime,
+            });
 
           if (upErr) {
-            console.error('[uazapi/webhook] Failed to upload media:', upErr.message);
+            console.error(
+              '[uazapi/webhook] Failed to upload media:',
+              upErr.message
+            );
           } else {
-            const { data: publicUrlData } = db.storage.from('chat-media').getPublicUrl(path);
+            const { data: publicUrlData } = db.storage
+              .from('chat-media')
+              .getPublicUrl(path);
             mediaUrl = publicUrlData.publicUrl;
           }
         } catch (err) {
