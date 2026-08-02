@@ -15,7 +15,7 @@
     "createAccount": "Criar conta"
   },
   "Sidebar": {
-    "title": "Modelo de CRM para WhatsApp",
+    "title": "CRM | COLBYX AGENCY",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -359,9 +359,9 @@
         "custom": "Campos personalizados",
         "deals": "Negócios",
         "tags": "Etiquetas",
-      "noTags": "Nenhuma etiqueta",
-      "noDeals": "Nenhum negócio",
-      "addNotePlaceholder": "Adicionar uma nota..."
+        "noTags": "Nenhuma etiqueta",
+        "noDeals": "Nenhum negócio",
+        "addNotePlaceholder": "Adicionar uma nota..."
       },
       "actions": {
         "edit": "Editar",
@@ -1332,13 +1332,11 @@
       "deleteLocallyAria": "Excluir template localmente",
       "deleteMetaLocallyTitle": "Excluir da Meta e localmente",
       "deleteLocallyTitle": "Excluir localmente",
-
       "dialogEditTitle": "Editar template de mensagem",
       "dialogNewTitle": "Novo template de mensagem",
       "dialogEditDesc": "Salve suas alterações para reenviar à Meta. O status volta para PENDENTE durante a revisão.",
       "dialogNewDesc": "Crie um template e envie para aprovação da Meta. Depois de aprovado, você pode usá-lo em transmissões e na caixa de entrada.",
       "authWarning": "Templates de AUTENTICAÇÃO têm um formato fixo de corpo + botão de código (OTP) que precisa de um construtor diferente. Crie-os no Meta WhatsApp Manager por enquanto e use <bold>Sincronizar da Meta</bold> para trazê-los.",
-
       "templateName": "Nome do template",
       "namePlaceholder": "ex.: confirmacao_pedido",
       "nameFixed": "O nome fica fixo assim que o template existe na Meta — crie um novo template para mudá-lo.",
@@ -1347,7 +1345,6 @@
       "language": "Idioma",
       "langFixed": "O idioma fica fixo assim que o template existe na Meta.",
       "langHint": "Precisa corresponder exatamente ao código na Meta — <code>en_US</code> e <code>en</code> são diferentes.",
-
       "header": "Cabeçalho",
       "headerNone": "Nenhum",
       "headerText": "Texto",
@@ -1357,7 +1354,6 @@
       "headerTextPlaceholder": "Texto do cabeçalho (máx. 60 caracteres, {{1}} opcional)",
       "headerSampleAria": "Valor de exemplo para a variável do cabeçalho",
       "headerSamplePlaceholder": "Valor de exemplo para {{1}} (obrigatório para revisão da Meta)",
-
       "uploadImage": "Enviar imagem",
       "uploadHint": "JPEG ou PNG, ≤5 MB",
       "mediaUrlPlaceholder": "https://… (ou cole um link público {format})",
@@ -1365,17 +1361,14 @@
       "mediaHint": "Precisa ser um link HTTPS publicamente acessível. A Meta busca esse link uma vez durante a revisão, então ele precisa ficar ativo por ~24 horas.",
       "videoHint": " Recomendado: MP4 / 3GPP, ≤16 MB, ≤60 segundos.",
       "documentHint": " Recomendado: PDF, ≤100 MB.",
-
       "bodyText": "Texto do corpo",
       "bodyPlaceholder": "Olá {{1}}, seu pedido {{2}} está confirmado.",
       "bodyHint": "Use {{1}}, {{2}} para variáveis (precisam ser contíguas a partir de {{1}}).",
       "sampleValues": "Valores de exemplo (a Meta usa isso para revisar seu template)",
       "sampleAria": "Valor de exemplo para a variável do corpo {var}",
       "samplePlaceholder": "Exemplo para {var}",
-
       "footer": "Rodapé (opcional)",
       "footerPlaceholder": "Texto de rodapé opcional (máx. 60 caracteres)",
-
       "buttons": "Botões (opcional)",
       "addButton": "Adicionar botão",
       "buttonsLimit": "Até {max} botões. Botões de RESPOSTA RÁPIDA devem vir antes de botões de URL / telefone / código.",
@@ -1388,19 +1381,16 @@
       "urlSamplePlaceholder": "Valor de exemplo para {{1}} (obrigatório quando a URL tem variável)",
       "phonePlaceholder": "+5511999999999",
       "codePlaceholder": "Código de exemplo (ex.: VERAO20)",
-
       "cancel": "Cancelar",
       "saving": "Salvando…",
       "submitting": "Enviando…",
       "saveResubmit": "Salvar e reenviar",
       "submitApproval": "Enviar para aprovação",
-
       "deleteDialogTitle": "Excluir template?",
       "deleteMetaDesc": "\"{name}\" será excluído da Meta e do wacrm. Transmissões ativas usando este template vão começar a falhar no próximo envio. Isso não pode ser desfeito.",
       "deleteLocalDesc": "\"{name}\" será excluído do wacrm. Ele nunca foi enviado à Meta, então nenhuma limpeza remota é necessária.",
       "deleting": "Excluindo…",
       "delete": "Excluir",
-
       "toastLoadFailed": "Falha ao carregar templates",
       "toastSubmitFailed": "Falha ao enviar",
       "toastSubmitEditSuccess": "Edição enviada — a Meta costuma revisar em até 24 horas.",
@@ -1540,7 +1530,6 @@
       "profileSaved": "Perfil salvo",
       "emailChangeFailed": "Falha na troca de e-mail: {message}",
       "profileSavedEmailCheck": "Perfil salvo — verifique seu e-mail para confirmar a mudança de endereço",
-
       "passwordTitle": "Senha",
       "passwordDesc": "Use pelo menos {min} caracteres. Você continuará conectado neste dispositivo depois de trocá-la.",
       "currentPassword": "Senha atual",
@@ -1554,7 +1543,6 @@
       "currentPasswordIncorrect": "A senha atual está incorreta",
       "passwordUpdateFailed": "Falha ao atualizar a senha: {message}",
       "passwordUpdated": "Senha atualizada",
-
       "sessionsTitle": "Sessões ativas",
       "sessionsDesc": "Saia de todos os dispositivos em que você está conectado — inclusive este. Útil se você perdeu um notebook ou compartilhou sua senha.",
       "signOutAll": "Sair de todos os dispositivos",

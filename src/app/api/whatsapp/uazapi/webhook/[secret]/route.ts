@@ -49,7 +49,13 @@ interface UazapiMessage {
   messageType?: string;
   text?: string;
   caption?: string;
-  content?: string;
+  /**
+   * Usually the message body as a string, but for a button/list tap
+   * this is an object — WhatsApp's raw InteractiveResponseMessage,
+   * e.g. `{ selectedID: "new", selectedDisplayText: "New customer",
+   * contextInfo: {...} }`. See `extractButtonReply` below.
+   */
+  content?: string | Record<string, unknown>;
   base64?: string;
   base64Data?: string;
   mimetype?: string;
@@ -160,6 +166,26 @@ function extFromMime(mime: string, contentType: string): string {
   if (contentType === 'video') return 'mp4';
   if (contentType === 'audio') return 'ogg';
   return 'bin';
+}
+
+/**
+ * Detect a button/list tap. uazapi hands back WhatsApp's raw
+ * InteractiveResponseMessage in `content` as an object — not a string,
+ * not the `choices`-string echo the send-side comment elsewhere in
+ * this file used to assume. Falling back to `message.content` as
+ * plain text (the old code did, for every non-media message) dumped
+ * this whole object — quoted-message context and all — into the
+ * chat as a wall of JSON instead of the button title the customer
+ * actually tapped.
+ */
+function extractButtonReply(
+  content: string | Record<string, unknown> | undefined
+): { id: string; title: string } | null {
+  if (!content || typeof content !== 'object') return null;
+  const title = content.selectedDisplayText;
+  if (typeof title !== 'string' || !title) return null;
+  const id = content.selectedID;
+  return { id: typeof id === 'string' && id ? id : title, title };
 }
 
 export async function POST(
@@ -370,7 +396,14 @@ export async function POST(
         .eq('sender_type', 'customer');
       const isFirstInboundMessage = (priorInboundCount ?? 0) === 0;
 
-      const contentType = toContentType(message.messageType);
+      const buttonReply = extractButtonReply(message.content);
+      // A tap on a button/list we sent takes priority over messageType —
+      // uazapi doesn't give this its own messageType (it still reports
+      // whatever the underlying transport frame is), the shape of
+      // `content` is what actually identifies it.
+      const contentType = buttonReply
+        ? 'interactive'
+        : toContentType(message.messageType);
       const isMedia = ['image', 'video', 'audio', 'document'].includes(
         contentType
       );
@@ -380,9 +413,18 @@ export async function POST(
       // to it here was the "giant link" bug: nothing downstream could
       // render that string usefully, so it got stored as message text
       // verbatim. Only a real caption belongs in a media message's text.
+      // Same reasoning for a button reply: show the tapped title, never
+      // the raw response object (`content` is only ever a plain string
+      // here for an ordinary text message — see extractButtonReply).
       const text = isMedia
         ? message.caption || ''
-        : message.text || message.caption || message.content || '';
+        : buttonReply
+          ? buttonReply.title
+          : message.text ||
+            message.caption ||
+            (typeof message.content === 'string' ? message.content : '') ||
+            '';
+      const interactiveReplyId = buttonReply?.id ?? null;
       const providerMessageId = message.messageid || message.id || null;
       let mediaUrl: string | null = null;
 
@@ -479,6 +521,7 @@ export async function POST(
         media_url: mediaUrl,
         message_id: providerMessageId,
         status: message.fromMe ? 'sent' : 'delivered',
+        interactive_reply_id: interactiveReplyId,
       });
 
       if (insertError) {
@@ -521,11 +564,7 @@ export async function POST(
           providerMessageId: providerMessageId ?? '',
           contentType,
           contentText: text,
-          // UAZAPI delivers button/list taps as ordinary text (the choice
-          // ids ride in the `choices` string we sent, and the reply comes
-          // back as its title). Until that round-trip is decoded there is
-          // no reply id to pass, so taps behave as text here.
-          interactiveReplyId: null,
+          interactiveReplyId,
           isFirstInboundMessage,
           contactWasCreated: contactCreated,
         });
