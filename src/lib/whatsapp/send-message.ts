@@ -427,7 +427,7 @@ export async function sendMessageToConversation(
     const message =
       err instanceof Error ? err.message : 'Unknown provider API error';
     console.error(`[send-message] ${provider.id} send failed:`, message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    throw new SendMessageError('provider_error', `${provider.id === 'meta' ? 'Meta' : 'WhatsApp'} API error: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
