@@ -25,7 +25,6 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { GroupThread } from '@/components/inbox/group-thread';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { uploadAccountMedia } from '@/lib/storage/upload-media';
 
 interface LiveParticipant {
   jid: string;
@@ -58,6 +57,41 @@ interface LocalGroup {
   is_announce: boolean;
   is_locked: boolean;
   status: 'active' | 'archived';
+}
+
+function resizeAndConvertToJpegBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        if (width > 640 || height > 640) {
+          if (width > height) {
+            height = Math.round((height * 640) / width);
+            width = 640;
+          } else {
+            width = Math.round((width * 640) / height);
+            height = 640;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas ctx null'));
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => reject(new Error('Invalid image file'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function GroupDetailPage() {
@@ -153,8 +187,7 @@ export default function GroupDetailPage() {
       if (removingImage) {
         finalImageUrl = 'remove';
       } else if (stagedImage) {
-        const { publicUrl } = await uploadAccountMedia('chat-media', stagedImage);
-        finalImageUrl = publicUrl;
+        finalImageUrl = await resizeAndConvertToJpegBase64(stagedImage);
       }
 
       const res = await fetch(`/api/whatsapp/groups/${groupId}`, {
