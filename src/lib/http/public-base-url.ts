@@ -51,7 +51,7 @@ function parseAllowedHosts(): readonly string[] | null {
   const raw = process.env.ALLOWED_INVITE_HOSTS?.trim();
   if (!raw) return null;
   const list = raw
-    .split(",")
+    .split(',')
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
   return list.length > 0 ? list : null;
@@ -59,34 +59,37 @@ function parseAllowedHosts(): readonly string[] | null {
 
 function isHostAllowed(
   hostname: string,
-  allowList: readonly string[] | null,
+  allowList: readonly string[] | null
 ): boolean {
   if (!allowList) return true; // No allow-list → permissive (legacy behavior).
   return allowList.includes(hostname.toLowerCase());
 }
 
-export function resolvePublicBaseUrl(request: Request, callerTag: string): string {
+export function resolvePublicBaseUrl(
+  request: Request,
+  callerTag: string
+): string {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/+$/, "");
+  if (explicit) return explicit.replace(/\/+$/, '');
 
   const allowList = parseAllowedHosts();
   const forwardedHost = request.headers
-    .get("x-forwarded-host")
-    ?.split(",")[0]
+    .get('x-forwarded-host')
+    ?.split(',')[0]
     ?.trim();
   const forwardedProto = request.headers
-    .get("x-forwarded-proto")
-    ?.split(",")[0]
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
     ?.trim();
   if (forwardedHost && isHostAllowed(forwardedHost, allowList)) {
-    return `${forwardedProto || "https"}://${forwardedHost}`;
+    return `${forwardedProto || 'https'}://${forwardedHost}`;
   }
 
-  const host = request.headers.get("host")?.trim();
+  const host = request.headers.get('host')?.trim();
   if (host && isHostAllowed(host, allowList)) {
     // The protocol on `request.url` is whatever the framework saw —
     // reliable for bare deployments where no proxy is rewriting it.
-    const reqProto = new URL(request.url).protocol.replace(":", "");
+    const reqProto = new URL(request.url).protocol.replace(':', '');
     return `${reqProto}://${host}`;
   }
 
@@ -104,8 +107,8 @@ export function resolvePublicBaseUrl(request: Request, callerTag: string): strin
     });
   } else {
     console.warn(
-      `[${callerTag}] could not derive base URL from request; falling back to marketing domain`,
+      `[${callerTag}] could not derive base URL from request; falling back to marketing domain`
     );
   }
-  return "https://wacrm.tech";
+  return 'https://wacrm.tech';
 }

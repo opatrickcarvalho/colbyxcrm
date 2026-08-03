@@ -17,22 +17,22 @@
 // revoke and re-issue.
 // ============================================================
 
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
-import { requireRole, toErrorResponse } from "@/lib/auth/account";
+import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
   clampExpiryDays,
   generateInviteToken,
   inviteExpiresAt,
   inviteUrl,
-} from "@/lib/auth/invitations";
-import { isAccountRole } from "@/lib/auth/roles";
+} from '@/lib/auth/invitations';
+import { isAccountRole } from '@/lib/auth/roles';
 import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
-} from "@/lib/rate-limit";
-import { resolvePublicBaseUrl } from "@/lib/http/public-base-url";
+} from '@/lib/rate-limit';
+import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 
 // Base URL resolution for invite links now lives in
 // src/lib/http/public-base-url.ts (resolvePublicBaseUrl) — shared with
@@ -44,23 +44,23 @@ const MAX_LABEL_LEN = 80;
 
 export async function GET() {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole('admin');
 
     const { data, error } = await ctx.supabase
-      .from("account_invitations")
+      .from('account_invitations')
       .select(
-        "id, role, label, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
+        'id, role, label, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id'
       )
-      .eq("account_id", ctx.accountId)
-      .is("accepted_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false });
+      .eq('account_id', ctx.accountId)
+      .is('accepted_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
 
     if (error) {
-      console.error("[GET /api/account/invitations] fetch error:", error);
+      console.error('[GET /api/account/invitations] fetch error:', error);
       return NextResponse.json(
-        { error: "Failed to load invitations" },
-        { status: 500 },
+        { error: 'Failed to load invitations' },
+        { status: 500 }
       );
     }
 
@@ -72,7 +72,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole('admin');
 
     // 30/min per user. The Members tab is a clicks-only UI so any
     // legitimate admin is far below this; the cap exists to keep
@@ -80,22 +80,24 @@ export async function POST(request: Request) {
     // flooding `account_invitations` with rows.
     const limit = checkRateLimit(
       `admin:inviteCreate:${ctx.userId}`,
-      RATE_LIMITS.adminAction,
+      RATE_LIMITS.adminAction
     );
     if (!limit.success) return rateLimitResponse(limit);
 
-    const body = (await request.json().catch(() => null)) as
-      | { role?: unknown; expiresInDays?: unknown; label?: unknown }
-      | null;
+    const body = (await request.json().catch(() => null)) as {
+      role?: unknown;
+      expiresInDays?: unknown;
+      label?: unknown;
+    } | null;
 
     const role = body?.role;
-    if (!isAccountRole(role) || role === "owner") {
+    if (!isAccountRole(role) || role === 'owner') {
       // The DB CHECK already rejects 'owner', but failing fast
       // here gives a clearer 400 than the eventual constraint
       // violation surfaced as a 500.
       return NextResponse.json(
         { error: "'role' must be one of admin, agent, viewer" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -104,26 +106,26 @@ export async function POST(request: Request) {
     // collapsing to the safe default, so we just pass the raw
     // value through after a type narrow.
     const expiresInDays =
-      typeof expiresInDaysRaw === "number" ? expiresInDaysRaw : undefined;
+      typeof expiresInDaysRaw === 'number' ? expiresInDaysRaw : undefined;
     const expiryDays = clampExpiryDays(expiresInDays);
     const expiresAt = inviteExpiresAt(expiryDays);
 
     let label: string | null = null;
-    if (typeof body?.label === "string") {
+    if (typeof body?.label === 'string') {
       const trimmed = body.label.trim();
       if (trimmed.length > MAX_LABEL_LEN) {
         return NextResponse.json(
           { error: `Label must be ${MAX_LABEL_LEN} characters or fewer` },
-          { status: 400 },
+          { status: 400 }
         );
       }
-      label = trimmed === "" ? null : trimmed;
+      label = trimmed === '' ? null : trimmed;
     }
 
     const { token, hash } = generateInviteToken();
 
     const { data, error } = await ctx.supabase
-      .from("account_invitations")
+      .from('account_invitations')
       .insert({
         account_id: ctx.accountId,
         token_hash: hash,
@@ -132,14 +134,14 @@ export async function POST(request: Request) {
         label,
         expires_at: expiresAt.toISOString(),
       })
-      .select("id, role, label, expires_at, created_at")
+      .select('id, role, label, expires_at, created_at')
       .single();
 
     if (error || !data) {
-      console.error("[POST /api/account/invitations] insert error:", error);
+      console.error('[POST /api/account/invitations] insert error:', error);
       return NextResponse.json(
-        { error: "Failed to create invitation" },
-        { status: 500 },
+        { error: 'Failed to create invitation' },
+        { status: 500 }
       );
     }
 
@@ -150,11 +152,11 @@ export async function POST(request: Request) {
         token,
         url: inviteUrl(
           token,
-          resolvePublicBaseUrl(request, "POST /api/account/invitations"),
+          resolvePublicBaseUrl(request, 'POST /api/account/invitations')
         ),
         expiresInDays: expiryDays,
       },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (err) {
     return toErrorResponse(err);
