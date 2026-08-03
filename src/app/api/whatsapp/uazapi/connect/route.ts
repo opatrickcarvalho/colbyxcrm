@@ -11,6 +11,7 @@ import {
   uazapiHost,
   UazapiNotEnabledError,
 } from '@/lib/whatsapp/providers';
+import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 
 /**
  * POST /api/whatsapp/uazapi/connect
@@ -91,10 +92,12 @@ export async function POST(request: Request) {
     // Register the callback before pairing: messages can start arriving
     // the moment the scan completes, and a webhook registered after
     // that races the first inbound message.
-    const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-    const origin = configuredOrigin
-      ? configuredOrigin.replace(/\/+$/, '')
-      : new URL(request.url).origin;
+    //
+    // resolvePublicBaseUrl, not new URL(request.url).origin directly —
+    // behind this app's Docker deployment that's 0.0.0.0:3000 (the
+    // Dockerfile's HOSTNAME=0.0.0.0), which uazapi cannot reach at
+    // all, silently breaking every inbound message.
+    const origin = resolvePublicBaseUrl(request, 'uazapi/connect');
 
     await registerWebhook(
       host,

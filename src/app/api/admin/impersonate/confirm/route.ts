@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 
 /**
  * GET /api/admin/impersonate/confirm?token_hash=...&redirect=/dashboard
@@ -28,9 +29,15 @@ import { createClient } from '@/lib/supabase/server';
  * magic link.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const tokenHash = searchParams.get('token_hash');
   const redirectPath = searchParams.get('redirect') || '/dashboard';
+  // NOT new URL(request.url).origin — inside this app's Docker image
+  // that's `http://0.0.0.0:3000` (Dockerfile sets HOSTNAME=0.0.0.0),
+  // not the public domain. This is exactly the bug that sent an
+  // operator's browser to an unreachable https://0.0.0.0:3000/dashboard
+  // after impersonating — see public-base-url.ts for the full story.
+  const origin = resolvePublicBaseUrl(request, 'admin/impersonate/confirm');
 
   if (!tokenHash) {
     return NextResponse.redirect(new URL('/login', origin));
