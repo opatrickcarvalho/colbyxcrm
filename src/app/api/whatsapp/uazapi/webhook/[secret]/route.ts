@@ -377,6 +377,76 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
+  // Group metadata/membership changes (participant count, name, topic,
+  // announce/locked toggles). Mirrors the group into `whatsapp_groups`
+  // by (account_id, group_jid) — creates the row if the group exists
+  // on WhatsApp but wasn't created through this CRM (e.g. made
+  // directly from a phone), updates it otherwise. This is what keeps
+  // the groups admin screen's capacity bar live without polling
+  // `/group/info` on every render.
+  if (event === 'groups') {
+    const raw = (body.data ?? {}) as Record<string, unknown>;
+    const groupJid = String(raw.JID ?? raw.jid ?? '');
+    if (!groupJid) {
+      return NextResponse.json({ ok: true, ignored: 'groups_no_jid' });
+    }
+
+    const participants = (raw.Participants ?? raw.participants ?? []) as unknown[];
+    const name = (raw.Name as string) || (raw.name as string) || null;
+    const description = (raw.Topic as string) || (raw.description as string) || null;
+    const isAnnounce = Boolean(raw.IsAnnounce ?? raw.isAnnounce ?? false);
+    const isLocked = Boolean(raw.IsLocked ?? raw.isLocked ?? false);
+
+    const update: Record<string, unknown> = {
+      participant_count: participants.length,
+      is_announce: isAnnounce,
+      is_locked: isLocked,
+      updated_at: new Date().toISOString(),
+    };
+    if (name) update.name = name;
+    if (description !== null) update.description = description;
+
+    const { data: existingGroup } = await db
+      .from('whatsapp_groups')
+      .select('id')
+      .eq('account_id', config.account_id)
+      .eq('group_jid', groupJid)
+      .maybeSingle();
+
+    if (existingGroup) {
+      const { error: groupUpdateErr } = await db
+        .from('whatsapp_groups')
+        .update(update)
+        .eq('id', existingGroup.id);
+      if (groupUpdateErr) {
+        console.error(
+          '[uazapi/webhook] groups: update failed:',
+          groupUpdateErr.message
+        );
+      }
+    } else if (name) {
+      // Only auto-create when we at least have a name — a bare
+      // membership delta with no name shouldn't spawn a half-empty row.
+      const { error: groupInsertErr } = await db.from('whatsapp_groups').insert({
+        account_id: config.account_id,
+        whatsapp_config_id: config.id,
+        group_jid: groupJid,
+        name,
+        description,
+        participant_count: participants.length,
+        is_announce: isAnnounce,
+        is_locked: isLocked,
+      });
+      if (groupInsertErr) {
+        console.error(
+          '[uazapi/webhook] groups: insert failed:',
+          groupInsertErr.message
+        );
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (event !== 'messages' && event !== 'message') {
     return NextResponse.json({ ok: true, ignored: event });
   }

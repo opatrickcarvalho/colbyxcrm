@@ -176,6 +176,11 @@ export const RATE_LIMITS = {
    *  an agent queueing up a batch of scheduled sends by hand, while
    *  bounding a runaway script from flooding the schedule table. */
   scheduledMessageCreate: { limit: 30, windowMs: 60_000 },
+  /** Group create/update/participant actions, per user. 30/min covers
+   *  an admin doing bulk participant management by hand while bounding
+   *  a runaway script against the WhatsApp account's own group-action
+   *  limits (WhatsApp itself throttles group creation/adds heavily). */
+  groupManage: { limit: 30, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

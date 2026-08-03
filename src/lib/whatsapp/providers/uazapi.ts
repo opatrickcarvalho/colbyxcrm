@@ -99,7 +99,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST';
 }
 
-async function uazapiFetch<T>(options: RequestOptions): Promise<T> {
+export async function uazapiFetch<T>(options: RequestOptions): Promise<T> {
   const { host, path, auth, body, method = 'POST' } = options;
 
   const response = await fetch(`${host}${path}`, {
@@ -275,7 +275,7 @@ export async function registerWebhook(
     body: {
       enabled: true,
       url,
-      events: ['messages', 'messages_update', 'connection'],
+      events: ['messages', 'messages_update', 'connection', 'groups'],
       excludeMessages: ['wasSentByApi'],
       addUrlEvents: false,
       addUrlTypesMessages: false,

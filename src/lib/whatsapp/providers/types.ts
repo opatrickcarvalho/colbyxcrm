@@ -74,6 +74,11 @@ export interface ProviderCapabilities {
    * false there.
    */
   presence: boolean;
+  /**
+   * Group creation/administration (`/group/*`). UAZAPI-only — the Meta
+   * Cloud API has no group surface for a WhatsApp Business number.
+   */
+  groups: boolean;
 }
 
 /**

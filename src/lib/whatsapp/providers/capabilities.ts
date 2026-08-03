@@ -27,6 +27,7 @@ export const META_CAPABILITIES: ProviderCapabilities = {
   session24h: true,
   inboundMediaNeedsFetch: true,
   presence: false,
+  groups: false,
 };
 
 export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
@@ -38,6 +39,7 @@ export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
   // so there is no separate media-id indirection to proxy.
   inboundMediaNeedsFetch: false,
   presence: true,
+  groups: true,
 };
 
 /** Look up a provider's capabilities by id without building a full adapter. */
