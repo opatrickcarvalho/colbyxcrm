@@ -129,7 +129,11 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta."
+      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta.",
+      "tabContacts": "Contatos",
+      "tabGroups": "Grupos",
+      "selectGroup": "Selecione um grupo",
+      "selectGroupHint": "Escolha um grupo à esquerda para ver a atividade."
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",

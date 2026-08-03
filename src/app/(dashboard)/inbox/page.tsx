@@ -18,8 +18,11 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { GroupList, type GroupListItem } from "@/components/inbox/group-list";
+import { GroupThread } from "@/components/inbox/group-thread";
+import { useCan } from "@/hooks/use-can";
 import { toast } from "sonner";
-import { WifiOff } from "lucide-react";
+import { MessageSquare, Users, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
@@ -69,6 +72,17 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+
+  // Groups tab — kept deliberately separate from the conversation state
+  // above rather than merged into one interleaved list. Groups have
+  // their own table/thread model (whatsapp_groups /
+  // whatsapp_group_messages) and no realtime channel yet; the tab
+  // switch just swaps which list + thread render in the same panels.
+  const [panelMode, setPanelMode] = useState<"contacts" | "groups">(
+    "contacts"
+  );
+  const [activeGroup, setActiveGroup] = useState<GroupListItem | null>(null);
+  const canManageGroups = useCan("send-messages");
 
   /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
@@ -515,6 +529,18 @@ function InboxPageInner() {
   }, [router]);
 
 
+  const handleSelectGroup = useCallback(
+    (group: GroupListItem) => {
+      if (activeGroup?.id === group.id) return;
+      setActiveGroup(group);
+    },
+    [activeGroup?.id]
+  );
+
+  const handleCloseGroup = useCallback(() => {
+    setActiveGroup(null);
+  }, []);
+
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
   }, []);
@@ -569,10 +595,12 @@ function InboxPageInner() {
 
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
-  // conversation slides the thread in; the thread's back button pops
-  // it back to the list. On lg+ both panes render side-by-side as
-  // before, unchanged.
-  const hasActiveConv = !!activeConversation;
+  // conversation/group slides the thread in; its back button pops it
+  // back to the list. On lg+ both panes render side-by-side as before,
+  // unchanged. Only the active panelMode's selection counts, so
+  // switching tabs on mobile always lands back on that tab's list.
+  const hasActiveThread =
+    panelMode === "contacts" ? !!activeConversation : !!activeGroup;
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
@@ -588,28 +616,67 @@ function InboxPageInner() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: Conversation list.
-            Hidden on mobile when a conversation is selected so the
-            thread can occupy the full width. Always visible on lg+. */}
+        {/* Left panel: Conversation/Group list.
+            Hidden on mobile when a thread is selected so it can occupy
+            the full width. Always visible on lg+. */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
-            hasActiveConv ? "hidden lg:flex" : "flex",
+            "flex h-full flex-1 flex-col lg:flex-none",
+            hasActiveThread ? "hidden lg:flex" : "flex",
           )}
         >
-          <ConversationList
-            activeConversationId={activeConversation?.id ?? null}
-            onSelect={handleSelectConversation}
-            conversations={conversations}
-            onConversationsLoaded={handleConversationsLoaded}
-            resyncToken={resyncToken}
-          />
+          {/* Contacts/Groups tab — same panel, same page, just swaps
+              which list + thread render below. Kept independent of the
+              conversation realtime plumbing on purpose. */}
+          <div className="flex shrink-0 gap-1 border-b border-border bg-card p-2 lg:w-80">
+            <button
+              onClick={() => setPanelMode("contacts")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors",
+                panelMode === "contacts"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              {t("tabContacts")}
+            </button>
+            <button
+              onClick={() => setPanelMode("groups")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors",
+                panelMode === "groups"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Users className="h-3.5 w-3.5" />
+              {t("tabGroups")}
+            </button>
+          </div>
+
+          {panelMode === "contacts" ? (
+            <ConversationList
+              activeConversationId={activeConversation?.id ?? null}
+              onSelect={handleSelectConversation}
+              conversations={conversations}
+              onConversationsLoaded={handleConversationsLoaded}
+              resyncToken={resyncToken}
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+              <GroupList
+                activeGroupId={activeGroup?.id ?? null}
+                onSelect={handleSelectGroup}
+                resyncToken={resyncToken}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Center panel: Message thread.
-            Hidden on mobile when no conversation is selected so the
-            list can occupy the full width. Always visible on lg+
-            (shows its own empty-state if no thread is picked yet).
+        {/* Center panel: Message/Group thread.
+            Hidden on mobile when no thread is selected so the list can
+            occupy the full width. Always visible on lg+.
 
             `min-w-0` is load-bearing: without it, a single wide piece
             of content inside the thread (long quote preview, very
@@ -619,34 +686,67 @@ function InboxPageInner() {
         <div
           className={cn(
             "flex h-full min-w-0 flex-1 lg:flex",
-            hasActiveConv ? "flex" : "hidden lg:flex",
+            hasActiveThread ? "flex" : "hidden lg:flex",
           )}
         >
-          <MessageThread
-            conversation={activeConversation}
-            contact={activeContact}
-            messages={messages}
-            onMessagesLoaded={handleMessagesLoaded}
-            onNewMessage={handleNewMessage}
-            onUpdateMessage={handleUpdateMessage}
-            onStatusChange={handleStatusChange}
-            onAssignChange={handleAssignChange}
-            onBack={handleCloseConversation}
-            resyncToken={resyncToken}
-            onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
-            onToggleContactPanel={handleToggleContactPanel}
-            session24hEnabled={capabilities?.session24h ?? false}
-            templatesEnabled={capabilities?.templates ?? false}
-            presenceEnabled={capabilities?.presence ?? false}
-          />
+          {panelMode === "contacts" ? (
+            <MessageThread
+              conversation={activeConversation}
+              contact={activeContact}
+              messages={messages}
+              onMessagesLoaded={handleMessagesLoaded}
+              onNewMessage={handleNewMessage}
+              onUpdateMessage={handleUpdateMessage}
+              onStatusChange={handleStatusChange}
+              onAssignChange={handleAssignChange}
+              onBack={handleCloseConversation}
+              resyncToken={resyncToken}
+              onRefresh={handleManualRefresh}
+              contactPanelOpen={contactPanelOpen}
+              onToggleContactPanel={handleToggleContactPanel}
+              session24hEnabled={capabilities?.session24h ?? false}
+              templatesEnabled={capabilities?.templates ?? false}
+              presenceEnabled={capabilities?.presence ?? false}
+            />
+          ) : activeGroup ? (
+            <div className="flex h-full w-full flex-col bg-background">
+              <div className="flex shrink-0 items-center gap-2 border-b border-border p-3">
+                <button
+                  type="button"
+                  onClick={handleCloseGroup}
+                  className="text-muted-foreground hover:text-foreground lg:hidden"
+                >
+                  ←
+                </button>
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">
+                  {activeGroup.name}
+                </span>
+              </div>
+              <div className="min-h-0 flex-1">
+                <GroupThread groupId={activeGroup.id} canManage={canManageGroups} />
+              </div>
+            </div>
+          ) : (
+            <div className="hidden h-full w-full flex-col items-center justify-center gap-1 lg:flex">
+              <Users className="mb-2 h-10 w-10 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">
+                {t("selectGroup")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("selectGroupHint")}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Right panel: Contact sidebar — desktop only, and only when the
-            agent hasn't collapsed it via the thread-header toggle (#258).
-            On mobile it's always hidden (the `lg:block` below), so the
-            toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
+        {/* Right panel: Contact sidebar — desktop only, contacts tab
+            only (a group has no single contact to show deals/tags/notes
+            for), and only when the agent hasn't collapsed it via the
+            thread-header toggle (#258). On mobile it's always hidden
+            (the `lg:block` below), so the toggle — itself desktop-only —
+            never affects it. */}
+        {panelMode === "contacts" && contactPanelOpen && (
           <div className="hidden lg:block">
             <ContactSidebar contact={activeContact} />
           </div>

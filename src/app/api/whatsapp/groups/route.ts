@@ -26,7 +26,55 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load groups' }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    const groups = data ?? [];
+
+    // Attach each group's most recent message so the inbox's Groups tab
+    // can sort/preview the same way the conversation list does. One
+    // query for the whole account rather than N — reduced to
+    // first-per-group in JS below.
+    interface LatestGroupMessage {
+      content_type: string;
+      content_text: string | null;
+      created_at: string;
+    }
+    const latestByGroup = new Map<string, LatestGroupMessage>();
+
+    if (groups.length > 0) {
+      const { data: recent } = await supabase
+        .from('whatsapp_group_messages')
+        .select('group_id, content_type, content_text, created_at')
+        .in(
+          'group_id',
+          groups.map((g) => g.id)
+        )
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      for (const row of recent ?? []) {
+        if (!latestByGroup.has(row.group_id)) {
+          latestByGroup.set(row.group_id, {
+            content_type: row.content_type,
+            content_text: row.content_text,
+            created_at: row.created_at,
+          });
+        }
+      }
+    }
+
+    const enriched = groups.map((group) => {
+      const latest = latestByGroup.get(group.id);
+      return {
+        ...group,
+        last_message_at: latest?.created_at ?? null,
+        last_message_preview: latest
+          ? latest.content_type === 'text'
+            ? latest.content_text
+            : `[${latest.content_type}]`
+          : null,
+      };
+    });
+
+    return NextResponse.json({ data: enriched });
   } catch (error) {
     return toErrorResponse(error);
   }
