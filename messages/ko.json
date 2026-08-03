@@ -886,7 +886,17 @@
       "leaveError": "그룹을 나가지 못했습니다.",
       "participantActionSuccess": "완료되었습니다.",
       "participantActionError": "일부 참가자 처리에 실패했습니다.",
-      "unavailable": "이 계정은 Uazapi로 연결되어 있지 않아 실시간 참가자 데이터를 사용할 수 없습니다."
+      "unavailable": "이 계정은 Uazapi로 연결되어 있지 않아 실시간 참가자 데이터를 사용할 수 없습니다.",
+      "activityTitle": "활동",
+      "activityEmpty": "아직 메시지가 없습니다.",
+      "activityHint": "그룹 가시성과 가벼운 모더레이션을 위한 공간입니다 — 전체 상담 인박스가 아닙니다.",
+      "typeMessage": "메시지를 입력하세요…",
+      "send": "보내기",
+      "attach": "첨부",
+      "you": "나",
+      "loadMessagesError": "메시지를 불러오지 못했습니다.",
+      "sendMessageError": "메시지를 보내지 못했습니다.",
+      "uploadError": "업로드에 실패했습니다."
     }
   },
   "Automations": {

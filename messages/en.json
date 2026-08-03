@@ -886,7 +886,17 @@
       "leaveError": "Couldn't leave the group.",
       "participantActionSuccess": "Done.",
       "participantActionError": "Some participants failed.",
-      "unavailable": "This account isn't connected through UAZAPI, so live participant data isn't available."
+      "unavailable": "This account isn't connected through UAZAPI, so live participant data isn't available.",
+      "activityTitle": "Activity",
+      "activityEmpty": "No messages yet.",
+      "activityHint": "Group visibility and light moderation — not a full attendance inbox.",
+      "typeMessage": "Type a message…",
+      "send": "Send",
+      "attach": "Attach",
+      "you": "You",
+      "loadMessagesError": "Failed to load messages.",
+      "sendMessageError": "Couldn't send the message.",
+      "uploadError": "Upload failed."
     }
   },
   "Automations": {

@@ -886,7 +886,17 @@
       "leaveError": "Não foi possível sair do grupo.",
       "participantActionSuccess": "Feito.",
       "participantActionError": "Alguns participantes falharam.",
-      "unavailable": "Esta conta não está conectada via Uazapi, então os dados de participantes ao vivo não estão disponíveis."
+      "unavailable": "Esta conta não está conectada via Uazapi, então os dados de participantes ao vivo não estão disponíveis.",
+      "activityTitle": "Atividade",
+      "activityEmpty": "Nenhuma mensagem ainda.",
+      "activityHint": "Visibilidade e moderação leve do grupo — não é uma fila de atendimento completa.",
+      "typeMessage": "Digite uma mensagem…",
+      "send": "Enviar",
+      "attach": "Anexar",
+      "you": "Você",
+      "loadMessagesError": "Falha ao carregar as mensagens.",
+      "sendMessageError": "Não foi possível enviar a mensagem.",
+      "uploadError": "Falha no upload."
     }
   },
   "Automations": {

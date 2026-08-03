@@ -458,9 +458,131 @@ export async function POST(
       // We will deduplicate them below instead of blindly ignoring all `fromMe` messages,
       // so that messages sent natively from the phone app are captured in the CRM.
 
-      // Group chats have no single contact to attribute a message to,
-      // and the CRM's data model is one conversation per contact.
-      if (message.isGroup) continue;
+      // Group chats have no single contact to attribute a message to —
+      // they get their own activity feed instead (whatsapp_group_messages,
+      // migration 043), decoupled from the contact-centric
+      // conversations/messages model (assignment, unread counts,
+      // automations/flows/AI auto-reply all assume one customer, which a
+      // group with hundreds of senders doesn't fit). Only groups already
+      // tracked locally (created/synced through this CRM) get their
+      // messages stored; a message from an untracked group is ignored.
+      if (message.isGroup) {
+        const groupJid = message.chatid;
+        if (!groupJid) continue;
+
+        const { data: localGroup } = await db
+          .from('whatsapp_groups')
+          .select('id')
+          .eq('account_id', config.account_id)
+          .eq('group_jid', groupJid)
+          .maybeSingle();
+        if (!localGroup) continue;
+
+        const groupProviderMessageId = message.messageid || message.id || null;
+
+        // Our own compose route (POST /api/whatsapp/groups/[id]/messages)
+        // already inserts the outbound row on send; this dedupes the
+        // webhook echo of that same send (or a native phone-app send
+        // that happens to arrive as fromMe) by provider message id.
+        if (message.fromMe && groupProviderMessageId) {
+          const { data: existingGroupMsg } = await db
+            .from('whatsapp_group_messages')
+            .select('id')
+            .eq('group_id', localGroup.id)
+            .eq('provider_message_id', groupProviderMessageId)
+            .maybeSingle();
+          if (existingGroupMsg) continue;
+        }
+
+        const groupContentType = toContentType(message.messageType);
+        const isGroupMedia = ['image', 'video', 'audio', 'document'].includes(
+          groupContentType
+        );
+        const groupText = isGroupMedia
+          ? message.caption || ''
+          : message.text ||
+            message.caption ||
+            (typeof message.content === 'string' ? message.content : '') ||
+            '';
+
+        let groupMediaUrl: string | null = null;
+        if (isGroupMedia) {
+          try {
+            let buffer: Buffer;
+            let mime: string;
+            let b64Str = message.base64 || message.base64Data || null;
+            if (b64Str) {
+              if (b64Str.includes('base64,')) {
+                b64Str = b64Str.split('base64,')[1];
+              }
+              buffer = Buffer.from(b64Str, 'base64');
+              mime = message.mimetype || 'application/octet-stream';
+            } else if (
+              groupProviderMessageId &&
+              config.uazapi_host &&
+              config.uazapi_instance_token
+            ) {
+              const provider = createUazapiProvider({
+                host: config.uazapi_host,
+                token: decrypt(config.uazapi_instance_token),
+              });
+              const resolved = await provider.fetchInboundMedia(
+                groupProviderMessageId
+              );
+              buffer = resolved.buffer;
+              mime = resolved.contentType;
+            } else {
+              throw new Error(
+                'group media message has neither inline bytes nor a message id to download'
+              );
+            }
+
+            const ext = extFromMime(mime, groupContentType);
+            const path = `account-${config.account_id}/group-${Date.now()}-uazapi.${ext}`;
+            const { error: groupUpErr } = await db.storage
+              .from('chat-media')
+              .upload(path, buffer, { contentType: mime });
+            if (groupUpErr) {
+              console.error(
+                '[uazapi/webhook] group: failed to upload media:',
+                groupUpErr.message
+              );
+            } else {
+              const { data: publicUrlData } = db.storage
+                .from('chat-media')
+                .getPublicUrl(path);
+              groupMediaUrl = publicUrlData.publicUrl;
+            }
+          } catch (err) {
+            console.error(
+              '[uazapi/webhook] failed to resolve group inbound media:',
+              err instanceof Error ? err.message : err
+            );
+          }
+        }
+
+        const { error: groupMsgErr } = await db
+          .from('whatsapp_group_messages')
+          .insert({
+            account_id: config.account_id,
+            group_id: localGroup.id,
+            direction: message.fromMe ? 'outbound' : 'inbound',
+            sender_jid: message.sender ?? null,
+            sender_phone: jidToPhone(message.sender),
+            sender_name: message.senderName ?? null,
+            content_type: groupContentType,
+            content_text: groupText || null,
+            media_url: groupMediaUrl,
+            provider_message_id: groupProviderMessageId,
+          });
+        if (groupMsgErr) {
+          console.error(
+            '[uazapi/webhook] group: failed to insert message:',
+            groupMsgErr.message
+          );
+        }
+        continue;
+      }
 
       // In 1-on-1 chats, chatid is always the remote contact's JID.
       // UAZAPI sometimes populates `sender` with the instance's own JID on inbound messages.
