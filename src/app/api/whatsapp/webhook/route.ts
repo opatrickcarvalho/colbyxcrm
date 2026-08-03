@@ -296,6 +296,23 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const config = configRows[0];
 
+      // Suspended accounts get no further inbound processing — the RLS
+      // layer (is_account_member, migration 040) would reject every
+      // write anyway once this reaches contacts/conversations/messages,
+      // so skip the work (and the media-verification calls) up front.
+      const { data: acct } = await supabaseAdmin()
+        .from('accounts')
+        .select('status')
+        .eq('id', config.account_id)
+        .maybeSingle();
+      if (acct?.status === 'suspended') {
+        console.log(
+          '[webhook] account suspended, skipping inbound message:',
+          config.account_id
+        );
+        continue;
+      }
+
       const decryptedAccessToken = decrypt(config.access_token);
 
       for (let i = 0; i < value.messages.length; i++) {

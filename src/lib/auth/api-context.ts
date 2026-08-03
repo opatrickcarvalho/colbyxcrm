@@ -33,7 +33,12 @@ import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
-import { forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
+import {
+  accountSuspended,
+  forbidden,
+  rateLimited,
+  unauthorized,
+} from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export interface ApiKeyContext {
@@ -105,11 +110,25 @@ export async function requireApiKey(
     throw forbidden(`This API key is missing the '${scope}' scope`);
   }
 
+  // This client is service-role and bypasses RLS entirely, so the
+  // `is_account_member` suspension gate (migration 040) never applies
+  // here — unlike the cookie-session path, a suspended account's API
+  // key would otherwise keep working. Check explicitly.
+  const admin = supabaseAdmin();
+  const { data: account } = await admin
+    .from('accounts')
+    .select('status')
+    .eq('id', row.account_id)
+    .maybeSingle();
+  if (account?.status === 'suspended') {
+    throw accountSuspended();
+  }
+
   touchLastUsed(row.id);
 
   return {
     authType: 'api_key',
-    supabase: supabaseAdmin(),
+    supabase: admin,
     accountId: row.account_id,
     keyId: row.id,
     scopes: row.scopes,

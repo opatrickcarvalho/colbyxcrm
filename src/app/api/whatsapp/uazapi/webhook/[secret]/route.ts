@@ -228,6 +228,20 @@ export async function POST(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  // Suspended accounts get no further inbound processing — the RLS
+  // layer (is_account_member, migration 040) would reject every write
+  // anyway once this reaches contacts/conversations/messages. Still
+  // 200 — uazapi retries on non-2xx, and a retry can't fix a
+  // suspension.
+  const { data: acct } = await db
+    .from('accounts')
+    .select('status')
+    .eq('id', config.account_id)
+    .maybeSingle();
+  if (acct?.status === 'suspended') {
+    return NextResponse.json({ ok: true, ignored: 'account_suspended' });
+  }
+
   let body: UazapiWebhookBody;
   try {
     body = (await request.json()) as UazapiWebhookBody;

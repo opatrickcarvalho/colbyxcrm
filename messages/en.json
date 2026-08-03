@@ -1709,5 +1709,56 @@
       "rowDescriptionPlaceholder": "Description (optional)",
       "addRow": "Add row",
       "addSection": "Add section"
+  },
+  "Admin": {
+    "accounts": {
+      "title": "Accounts",
+      "subtitle": "Every tenant account on this platform.",
+      "searchPlaceholder": "Search by name or owner email",
+      "search": "Search",
+      "loadError": "Failed to load accounts.",
+      "actionError": "Action failed.",
+      "noAccounts": "No accounts found.",
+      "colName": "Name",
+      "colOwner": "Owner",
+      "colMembers": "Members",
+      "colWhatsapp": "WhatsApp",
+      "colStatus": "Status",
+      "colCreated": "Created",
+      "colActions": "Actions",
+      "notConnected": "Not connected",
+      "active": "Active",
+      "suspendedBadge": "Suspended",
+      "suspend": "Suspend",
+      "reactivate": "Reactivate",
+      "suspendReasonPrompt": "Reason for suspending this account (optional):",
+      "suspended": "Account suspended.",
+      "reactivated": "Account reactivated.",
+      "accessDenied": "Platform admin access required. Redirecting…"
+    },
+    "accountDetail": {
+      "loadError": "Failed to load account.",
+      "accessDenied": "Platform admin access required. Redirecting…",
+      "back": "Back to accounts",
+      "active": "Active",
+      "suspendedBadge": "Suspended",
+      "suspendedReasonLabel": "Reason",
+      "contacts": "Contacts",
+      "conversations": "Conversations",
+      "messages30d": "Messages (30d)",
+      "whatsapp": "WhatsApp connection",
+      "notConnected": "Not connected",
+      "members": "Members",
+      "colName": "Name",
+      "colEmail": "Email",
+      "colRole": "Role",
+      "colActions": "Actions",
+      "enterAs": "Enter as",
+      "impersonateError": "Could not start impersonation."
+    },
+    "impersonationBanner": {
+      "message": "Support mode: browsing as {email}",
+      "exit": "Exit"
+    }
   }
 }

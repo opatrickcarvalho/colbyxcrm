@@ -55,6 +55,21 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * Thrown by `getCurrentAccount()` when the caller's account has been
+ * suspended by a platform admin (migration 040, `accounts.status`).
+ * Kept distinct from `ForbiddenError` so `toErrorResponse()` can put a
+ * machine-readable `code` on the response — the composer already
+ * reads a code field this way for `ai_not_configured`, same pattern.
+ */
+export class AccountSuspendedError extends Error {
+  readonly status = 403 as const;
+  constructor(message = "This account has been suspended") {
+    super(message);
+    this.name = "AccountSuspendedError";
+  }
+}
+
+/**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
  *
@@ -67,6 +82,12 @@ export class ForbiddenError extends Error {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
+  if (err instanceof AccountSuspendedError) {
+    return NextResponse.json(
+      { error: err.message, code: "account_suspended" },
+      { status: err.status }
+    );
+  }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
@@ -149,7 +170,7 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   // RLS, so it stays robust against cache staleness and older schemas.
   const { data: account, error: accountErr } = await supabase
     .from("accounts")
-    .select("id, name")
+    .select("id, name, status")
     .eq("id", data.account_id)
     .maybeSingle();
 
@@ -161,6 +182,9 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     // account_id points at no readable account row — orphaned profile
     // or an RLS gap. Same "can't scope this user" outcome as above.
     throw new ForbiddenError("Profile is not linked to an account");
+  }
+  if (account.status === "suspended") {
+    throw new AccountSuspendedError();
   }
 
   return {

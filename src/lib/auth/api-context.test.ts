@@ -5,10 +5,30 @@ import type { ApiKeyRow } from "@/lib/api-keys/store";
 import { ApiError } from "@/lib/api/v1/respond";
 import { __resetRateLimitForTests, RATE_LIMITS } from "@/lib/rate-limit";
 
-// Mock the service-role client factory — requireApiKey only stashes
-// the returned client in the context; tests never call through it.
+// Mock the service-role client factory. requireApiKey stashes the
+// returned client in the context (tests never call through it for
+// that part) AND uses it for the account-suspension check added
+// alongside migration 040 — `accountStatus` controls what that lookup
+// resolves to, defaulting to an active account so the pre-existing
+// tests below don't need to know this check exists.
+let accountStatus: string | null = "active";
 vi.mock("@/lib/flows/admin-client", () => ({
-  supabaseAdmin: () => ({ __isMockAdminClient: true }),
+  supabaseAdmin: () => ({
+    __isMockAdminClient: true,
+    from: (table: string) => {
+      if (table !== "accounts") throw new Error(`unexpected table: ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: accountStatus ? { status: accountStatus } : null,
+              error: null,
+            }),
+          }),
+        }),
+      };
+    },
+  }),
 }));
 
 // Mock the store so we control which row a hash resolves to.
@@ -47,6 +67,7 @@ beforeEach(() => {
   __resetRateLimitForTests();
   findActiveKeyByHash.mockReset();
   touchLastUsed.mockReset();
+  accountStatus = "active";
 });
 
 afterEach(() => {
@@ -115,6 +136,17 @@ describe("requireApiKey", () => {
     findActiveKeyByHash.mockResolvedValue(row({ scopes: ["messages:send"] }));
     const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "messages:send");
     expect(ctx.accountId).toBe("acct-1");
+  });
+
+  it("403s with account_suspended when the account has been suspended", async () => {
+    accountStatus = "suspended";
+    findActiveKeyByHash.mockResolvedValue(row());
+    await expectApiError(
+      requireApiKey(reqWith(`Bearer ${KEY}`)),
+      "account_suspended",
+      403,
+    );
+    expect(touchLastUsed).not.toHaveBeenCalled();
   });
 
   it("429s once the per-key budget is exhausted", async () => {

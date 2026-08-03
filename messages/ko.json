@@ -1709,5 +1709,56 @@
     "rowDescriptionPlaceholder": "설명 (선택 사항)",
     "addRow": "행 추가",
     "addSection": "섹션 추가"
+  },
+  "Admin": {
+    "accounts": {
+      "title": "계정",
+      "subtitle": "이 플랫폼의 모든 고객 계정입니다.",
+      "searchPlaceholder": "이름 또는 소유자 이메일로 검색",
+      "search": "검색",
+      "loadError": "계정을 불러오지 못했습니다.",
+      "actionError": "작업에 실패했습니다.",
+      "noAccounts": "계정이 없습니다.",
+      "colName": "이름",
+      "colOwner": "소유자",
+      "colMembers": "구성원",
+      "colWhatsapp": "WhatsApp",
+      "colStatus": "상태",
+      "colCreated": "생성일",
+      "colActions": "작업",
+      "notConnected": "연결되지 않음",
+      "active": "활성",
+      "suspendedBadge": "정지됨",
+      "suspend": "정지",
+      "reactivate": "재활성화",
+      "suspendReasonPrompt": "이 계정을 정지하는 이유 (선택 사항):",
+      "suspended": "계정이 정지되었습니다.",
+      "reactivated": "계정이 재활성화되었습니다.",
+      "accessDenied": "플랫폼 관리자 권한이 필요합니다. 이동 중…"
+    },
+    "accountDetail": {
+      "loadError": "계정을 불러오지 못했습니다.",
+      "accessDenied": "플랫폼 관리자 권한이 필요합니다. 이동 중…",
+      "back": "계정 목록으로",
+      "active": "활성",
+      "suspendedBadge": "정지됨",
+      "suspendedReasonLabel": "사유",
+      "contacts": "연락처",
+      "conversations": "대화",
+      "messages30d": "메시지 (30일)",
+      "whatsapp": "WhatsApp 연결",
+      "notConnected": "연결되지 않음",
+      "members": "구성원",
+      "colName": "이름",
+      "colEmail": "이메일",
+      "colRole": "역할",
+      "colActions": "작업",
+      "enterAs": "이 사용자로 접속",
+      "impersonateError": "접속 대행을 시작할 수 없습니다."
+    },
+    "impersonationBanner": {
+      "message": "지원 모드: {email}(으)로 접속 중",
+      "exit": "종료"
+    }
   }
 }

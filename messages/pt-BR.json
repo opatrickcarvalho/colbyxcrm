@@ -1709,5 +1709,56 @@
     "rowDescriptionPlaceholder": "Descrição (opcional)",
     "addRow": "Adicionar linha",
     "addSection": "Adicionar seção"
+  },
+  "Admin": {
+    "accounts": {
+      "title": "Contas",
+      "subtitle": "Todas as contas de clientes desta plataforma.",
+      "searchPlaceholder": "Buscar por nome ou e-mail do dono",
+      "search": "Buscar",
+      "loadError": "Falha ao carregar as contas.",
+      "actionError": "Ação falhou.",
+      "noAccounts": "Nenhuma conta encontrada.",
+      "colName": "Nome",
+      "colOwner": "Dono",
+      "colMembers": "Membros",
+      "colWhatsapp": "WhatsApp",
+      "colStatus": "Status",
+      "colCreated": "Criada em",
+      "colActions": "Ações",
+      "notConnected": "Não conectado",
+      "active": "Ativa",
+      "suspendedBadge": "Suspensa",
+      "suspend": "Suspender",
+      "reactivate": "Reativar",
+      "suspendReasonPrompt": "Motivo da suspensão desta conta (opcional):",
+      "suspended": "Conta suspensa.",
+      "reactivated": "Conta reativada.",
+      "accessDenied": "Acesso restrito a administradores da plataforma. Redirecionando…"
+    },
+    "accountDetail": {
+      "loadError": "Falha ao carregar a conta.",
+      "accessDenied": "Acesso restrito a administradores da plataforma. Redirecionando…",
+      "back": "Voltar para contas",
+      "active": "Ativa",
+      "suspendedBadge": "Suspensa",
+      "suspendedReasonLabel": "Motivo",
+      "contacts": "Contatos",
+      "conversations": "Conversas",
+      "messages30d": "Mensagens (30d)",
+      "whatsapp": "Conexão WhatsApp",
+      "notConnected": "Não conectado",
+      "members": "Membros",
+      "colName": "Nome",
+      "colEmail": "E-mail",
+      "colRole": "Papel",
+      "colActions": "Ações",
+      "enterAs": "Entrar como",
+      "impersonateError": "Não foi possível iniciar a personificação."
+    },
+    "impersonationBanner": {
+      "message": "Modo suporte: navegando como {email}",
+      "exit": "Sair"
+    }
   }
 }
