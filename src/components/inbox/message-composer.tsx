@@ -120,7 +120,21 @@ interface MessageComposerProps {
   templatesEnabled?: boolean;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /**
+   * Fires the "typing…" / "recording audio…" indicator on the
+   * recipient's end. Omitted entirely (not just a no-op) when the
+   * connected provider doesn't support it (Meta) — the parent gates
+   * this on `capabilities.presence` so the composer never has to know
+   * which provider it's talking to.
+   */
+  onPresence?: (presence: "composing" | "recording" | "paused") => void;
 }
+
+/** How long to wait after the last keystroke before clearing the
+ *  "typing…" indicator. Short enough to feel honest (it disappears
+ *  when the agent actually stops), long enough that normal typing
+ *  pauses don't flicker it on/off. */
+const TYPING_IDLE_MS = 3000;
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -143,6 +157,7 @@ export function MessageComposer({
   templatesEnabled = true,
   replyTo,
   onClearReply,
+  onPresence,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
@@ -187,6 +202,13 @@ export function MessageComposer({
   const cancelledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Typing-indicator state. `isTypingRef` guards against re-firing
+  // 'composing' on every keystroke — uazapi's own presence lasts up to
+  // 5 minutes per call, so one call per burst is enough; the idle timer
+  // below is what clears it after a real pause.
+  const isTypingRef = useRef(false);
+  const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Viewers (read-only role) can browse the inbox but never send.
   // For solo users this is always true — single-owner accounts pass
   // every capability — so the disabled branch is a no-op there.
@@ -212,8 +234,38 @@ export function MessageComposer({
       // stop() releases the mic stream + audio context inside opus-recorder.
       void recorderRef.current?.stop().catch(() => {});
       removeStaged(draftRef.current?.path);
+      if (typingIdleTimerRef.current) clearTimeout(typingIdleTimerRef.current);
     };
   }, [clearTimer, removeStaged]);
+
+  // Fire 'composing' once per typing burst, then arm/re-arm the idle
+  // timer that clears it after TYPING_IDLE_MS of no further keystrokes.
+  const notifyComposing = useCallback(() => {
+    if (!onPresence) return;
+    if (typingIdleTimerRef.current) clearTimeout(typingIdleTimerRef.current);
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      onPresence("composing");
+    }
+    typingIdleTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      onPresence("paused");
+    }, TYPING_IDLE_MS);
+  }, [onPresence]);
+
+  // Clear the indicator immediately (no debounce) — used when the
+  // agent deletes the whole draft or actually sends, rather than
+  // waiting out the idle timer for something that's already resolved.
+  const clearTyping = useCallback(() => {
+    if (typingIdleTimerRef.current) {
+      clearTimeout(typingIdleTimerRef.current);
+      typingIdleTimerRef.current = null;
+    }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      onPresence?.("paused");
+    }
+  }, [onPresence]);
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -227,6 +279,13 @@ export function MessageComposer({
     const trimmed = text.trim();
     if (!trimmed || sending || sessionExpired) return;
 
+    // Clear the indicator (if it was showing) right as the send fires,
+    // rather than waiting out the idle timer — and reset the local
+    // typing flag so the next burst fires a fresh 'composing'. uazapi
+    // also auto-cancels presence once the actual send lands, so this
+    // is belt-and-braces for the gap between click and delivery.
+    clearTyping();
+
     setSending(true);
     try {
       onSend(trimmed, replyTo?.id);
@@ -237,7 +296,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, sessionExpired, onSend, replyTo?.id, clearTyping]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -251,10 +310,18 @@ export function MessageComposer({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setText(e.target.value);
+      const value = e.target.value;
+      setText(value);
       adjustHeight();
+      if (value.trim()) {
+        notifyComposing();
+      } else {
+        // Draft cleared back to empty — clear right away instead of
+        // waiting out the idle timer for a burst that's already over.
+        clearTyping();
+      }
     },
-    [adjustHeight]
+    [adjustHeight, notifyComposing, clearTyping]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
@@ -478,25 +545,34 @@ export function MessageComposer({
       setRecording(true);
       setRecordSeconds(0);
       timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+      // One call covers the whole take — uazapi's presence lasts up to
+      // 5 minutes per call, which happens to match MAX_RECORDING_SECONDS
+      // exactly, so there's no mid-recording renewal to manage.
+      onPresence?.("recording");
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
       toast.error("Microphone access denied or unavailable.");
     }
-  }, [inputsDisabled, busy, recording, finalizeRecording]);
+  }, [inputsDisabled, busy, recording, finalizeRecording, onPresence]);
 
   const stopRecording = useCallback(() => {
     clearTimer();
     setRecording(false);
     void recorderRef.current?.stop().catch(() => {});
-  }, [clearTimer]);
+    // The take moves to a caption/preview draft, not an immediate send
+    // — the recipient shouldn't keep seeing "recording audio…" while
+    // the agent is still reviewing it.
+    onPresence?.("paused");
+  }, [clearTimer, onPresence]);
 
   const cancelRecording = useCallback(() => {
     cancelledRef.current = true;
     clearTimer();
     setRecording(false);
     void recorderRef.current?.stop().catch(() => {});
-  }, [clearTimer]);
+    onPresence?.("paused");
+  }, [clearTimer, onPresence]);
 
   // Auto-stop at the cap so a forgotten recording can't blow the
   // upload size limit.

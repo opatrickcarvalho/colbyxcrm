@@ -26,6 +26,7 @@ export const META_CAPABILITIES: ProviderCapabilities = {
   reactions: true,
   session24h: true,
   inboundMediaNeedsFetch: true,
+  presence: false,
 };
 
 export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
@@ -36,6 +37,7 @@ export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
   // /message/download resolves the bytes from the message id directly,
   // so there is no separate media-id indirection to proxy.
   inboundMediaNeedsFetch: false,
+  presence: true,
 };
 
 /** Look up a provider's capabilities by id without building a full adapter. */

@@ -67,6 +67,13 @@ export interface ProviderCapabilities {
    * Drives whether the media-proxy route is needed.
    */
   inboundMediaNeedsFetch: boolean;
+  /**
+   * Live "typing…" / "recording audio…" indicator on the recipient's
+   * end. UAZAPI exposes it directly; Meta's Cloud API has no equivalent
+   * for a business number (only read receipts), so this is always
+   * false there.
+   */
+  presence: boolean;
 }
 
 /**
@@ -162,6 +169,17 @@ export interface SendReactionArgs {
   emoji: string;
 }
 
+export interface SendPresenceArgs {
+  to: string;
+  /**
+   * WhatsApp's own vocabulary. `composing`/`recording` show the
+   * indicator; `paused` clears whichever one is currently showing.
+   * There is no "stop composing" distinct from "stop recording" —
+   * both collapse to the same `paused` signal on the wire.
+   */
+  presence: 'composing' | 'recording' | 'paused';
+}
+
 /**
  * One account's bound connection to its WhatsApp backend.
  *
@@ -183,6 +201,13 @@ export interface WhatsAppProvider {
     args: SendInteractiveListArgs
   ): Promise<ProviderSendResult>;
   sendReaction(args: SendReactionArgs): Promise<ProviderSendResult>;
+
+  /**
+   * Fire a typing/recording indicator. Callers must check
+   * `capabilities.presence` first — Meta throws `ProviderUnsupportedError`
+   * rather than silently no-op'ing, same convention as `sendTemplate`.
+   */
+  sendPresence(args: SendPresenceArgs): Promise<void>;
 
   /**
    * Resolve an inbound media reference to its bytes.

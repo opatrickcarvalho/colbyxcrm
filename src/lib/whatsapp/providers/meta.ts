@@ -26,6 +26,7 @@ import {
   phoneVariants,
 } from '@/lib/whatsapp/phone-utils';
 import { META_CAPABILITIES } from './capabilities';
+import { ProviderUnsupportedError } from './types';
 import type {
   ProviderSendResult,
   SendInteractiveButtonsArgs,
@@ -36,6 +37,9 @@ import type {
   SendTextArgs,
   WhatsAppProvider,
 } from './types';
+// SendPresenceArgs intentionally not imported: this adapter's
+// sendPresence() takes no args — it always throws — so the parameter
+// type would be an unused import.
 
 export { META_CAPABILITIES };
 
@@ -177,6 +181,14 @@ export function createMetaProvider(
         emoji: args.emoji,
       });
       return { messageId: result.messageId, deliveredTo: args.to };
+    },
+
+    // The Cloud API has no "typing…" signal for a business number —
+    // only read receipts. Callers are expected to check
+    // capabilities.presence first; this is the backstop for the ones
+    // that forget, same convention as sendTemplate above.
+    async sendPresence(): Promise<void> {
+      throw new ProviderUnsupportedError('meta', 'presence');
     },
 
     // Meta hands out a media *id*; turning it into bytes takes two

@@ -112,6 +112,8 @@ interface MessageThreadProps {
   session24hEnabled?: boolean;
   /** Whether the connected provider supports pre-approved templates (Meta: yes, UAZAPI: no). */
   templatesEnabled?: boolean;
+  /** Whether the connected provider supports the typing/recording indicator (UAZAPI: yes, Meta: no). */
+  presenceEnabled?: boolean;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -172,6 +174,7 @@ export function MessageThread({
   onToggleContactPanel,
   session24hEnabled = true,
   templatesEnabled = true,
+  presenceEnabled = false,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -626,6 +629,21 @@ export function MessageThread({
       }
     },
     [conversation, onNewMessage, onUpdateMessage],
+  );
+
+  // Best-effort typing/recording indicator. Fire-and-forget — a failed
+  // presence ping is invisible to the agent and must never interrupt
+  // composing, so errors are swallowed rather than toasted.
+  const handlePresence = useCallback(
+    (presence: "composing" | "recording" | "paused") => {
+      if (!conversation) return;
+      void fetch("/api/whatsapp/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversation.id, presence }),
+      }).catch(() => {});
+    },
+    [conversation],
   );
 
   const handleStatusChange = useCallback(
@@ -1167,6 +1185,7 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        onPresence={presenceEnabled ? handlePresence : undefined}
       />
 
       <TemplatePicker

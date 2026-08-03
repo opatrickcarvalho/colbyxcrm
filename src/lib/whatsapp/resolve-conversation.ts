@@ -30,6 +30,12 @@ export interface ResolvedConversation {
   contactId: string;
   /** True if this call created the contact (vs matched an existing one). */
   contactCreated: boolean;
+  /**
+   * The contact's current `avatar_url` — null for a brand-new contact
+   * or an existing one uazapi has never supplied a photo for yet. Lets
+   * a caller skip re-fetching a photo that's already on file.
+   */
+  avatarUrl: string | null;
 }
 
 /**
@@ -87,10 +93,12 @@ export async function resolveConversationByPhone(
   // ---- contact -------------------------------------------------
   let contactId: string;
   let contactCreated = false;
+  let avatarUrl: string | null = null;
 
   const existing = await findExistingContact(db, accountId, sanitized);
   if (existing) {
     contactId = existing.id;
+    avatarUrl = (existing.avatar_url as string | null | undefined) ?? null;
     if (name && name !== existing.name) {
       await db
         .from('contacts')
@@ -149,7 +157,7 @@ export async function resolveConversationByPhone(
     ownerUserId
   );
 
-  return { conversationId, contactId, contactCreated };
+  return { conversationId, contactId, contactCreated, avatarUrl };
 }
 
 /**

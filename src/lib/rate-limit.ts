@@ -125,6 +125,11 @@ export const RATE_LIMITS = {
    *  fidget with reactions and a single "swap" is actually two calls
    *  (remove + add) under the hood. */
   react: { limit: 120, windowMs: 60_000 },
+  /** Typing/recording presence ping. The composer fires this at most
+   *  once per typing burst (debounced) plus once at recording
+   *  start/stop, so a busy agent stays well under this — the ceiling
+   *  exists purely to bound a runaway client bug, not real usage. */
+  presence: { limit: 60, windowMs: 60_000 },
   /** Invitation peek (public, per-IP). 30/min lets a forwarded link
    *  retry a handful of times under flaky connectivity without
    *  enabling brute-force token enumeration. With 256-bit tokens the

@@ -5,7 +5,10 @@ import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
 import { runInboundSideEffects } from '@/lib/whatsapp/inbound/side-effects';
 import { isValidStatusTransition } from '@/lib/whatsapp/status-ladder';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
-import { createUazapiProvider } from '@/lib/whatsapp/providers/uazapi';
+import {
+  createUazapiProvider,
+  fetchChatAvatar,
+} from '@/lib/whatsapp/providers/uazapi';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 /**
@@ -113,6 +116,13 @@ function toContentType(messageType: string | undefined): string {
   switch ((messageType || '').toLowerCase()) {
     case 'image':
     case 'imagemessage':
+    case 'sticker':
+    case 'stickermessage':
+      // Stickers are webp images on the wire (uazapi's own send-media
+      // enum lists `sticker` as a distinct type, but the download/
+      // upload path only cares that it's an image). Reusing 'image'
+      // means isMedia below and extFromMime's existing image/webp
+      // entry both pick it up with no further changes.
       return 'image';
     case 'video':
     case 'videomessage':
@@ -376,13 +386,40 @@ export async function POST(
         continue;
       }
 
-      const { conversationId, contactId, contactCreated } =
+      const { conversationId, contactId, contactCreated, avatarUrl } =
         await resolveConversationByPhone(
           db,
           config.account_id,
           phone,
           message.senderName ?? null
         );
+
+      // Best-effort profile-photo backfill. uazapi never rides this
+      // along on the message payload — `Chat.image` only comes back
+      // from a dedicated `/chat/details` call — so only pay for it
+      // once, on whichever message first arrives for a contact that
+      // doesn't have one on file yet. Failure here must never break
+      // message processing, hence the isolated try/catch.
+      if (!avatarUrl && config.uazapi_host && config.uazapi_instance_token) {
+        try {
+          const fetchedAvatarUrl = await fetchChatAvatar(
+            config.uazapi_host,
+            decrypt(config.uazapi_instance_token),
+            phone
+          );
+          if (fetchedAvatarUrl) {
+            await db
+              .from('contacts')
+              .update({ avatar_url: fetchedAvatarUrl })
+              .eq('id', contactId);
+          }
+        } catch (err) {
+          console.error(
+            '[uazapi/webhook] failed to backfill profile picture:',
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
 
       // "First ever inbound from this contact" has to be counted BEFORE
       // the insert below, or the message we are about to store would

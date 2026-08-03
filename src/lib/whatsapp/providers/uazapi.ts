@@ -40,6 +40,7 @@ import {
   type SendInteractiveButtonsArgs,
   type SendInteractiveListArgs,
   type SendMediaArgs,
+  type SendPresenceArgs,
   type SendReactionArgs,
   type SendTextArgs,
   type WhatsAppProvider,
@@ -340,6 +341,40 @@ export interface UazapiProviderCredentials {
   token: string;
 }
 
+/**
+ * Full-resolution profile-picture URL for a contact/chat.
+ *
+ * uazapi never rides this along on an inbound message payload — the
+ * `Message` webhook schema has no image field — the only place it
+ * shows up is `Chat.image` from a dedicated `/chat/details` call (or
+ * the `chats`/`contacts` webhook events, which this deployment doesn't
+ * subscribe to). Returns null rather than throwing on any failure (no
+ * photo set, contact not found, transient error) so a missing avatar
+ * never blocks inbound message processing — callers already treat null
+ * as "nothing to update".
+ */
+export async function fetchChatAvatar(
+  host: string,
+  token: string,
+  phone: string
+): Promise<string | null> {
+  try {
+    const payload = await uazapiFetch<{ image?: string }>({
+      host,
+      path: '/chat/details',
+      auth: { kind: 'token', value: token },
+      body: { number: phone },
+    });
+    return payload?.image || null;
+  } catch (err) {
+    console.error(
+      '[uazapi] failed to fetch chat avatar:',
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 export function createUazapiProvider(
   credentials: UazapiProviderCredentials
 ): WhatsAppProvider {
@@ -434,6 +469,19 @@ export function createUazapiProvider(
         body: { number: args.to, id: args.targetMessageId, text: args.emoji },
       });
       return { messageId: readSentMessageId(payload), deliveredTo: args.to };
+    },
+
+    // uazapi manages the indicator asynchronously on its side (re-ticks
+    // WhatsApp every 10s for up to 5 minutes, or until we actually send
+    // a message to the same chat, which cancels it automatically) — one
+    // call per typing/recording burst is enough, no polling needed here.
+    async sendPresence(args: SendPresenceArgs): Promise<void> {
+      await uazapiFetch<unknown>({
+        host,
+        path: '/message/presence',
+        auth,
+        body: { number: args.to, presence: args.presence },
+      });
     },
 
     async fetchInboundMedia(ref: string) {

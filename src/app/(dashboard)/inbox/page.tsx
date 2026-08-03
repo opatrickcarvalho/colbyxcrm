@@ -638,6 +638,7 @@ function InboxPageInner() {
             onToggleContactPanel={handleToggleContactPanel}
             session24hEnabled={capabilities?.session24h ?? false}
             templatesEnabled={capabilities?.templates ?? false}
+            presenceEnabled={capabilities?.presence ?? false}
           />
         </div>
 
