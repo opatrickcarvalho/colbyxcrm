@@ -1607,7 +1607,21 @@
       "newKeyTitle": "Nova chave de API",
       "newKeyDesc": "Dê um nome relacionado à integração que vai usá-la e conceda apenas os escopos necessários.",
       "done": "Concluído",
-      "networkError": "Não foi possível conectar ao servidor"
+      "networkError": "Não foi possível conectar ao servidor",
+      "docs": {
+        "button": "Documentação da API",
+        "title": "Conecte um sistema externo",
+        "subtitle": "Tudo que outro sistema precisa para se autenticar e se comunicar com esta conta através da API pública.",
+        "sections": {
+          "quickstart": "Primeiros passos",
+          "scopes": "Escopos",
+          "endpoints": "Endpoints",
+          "pagination": "Paginação",
+          "errors": "Erros",
+          "rateLimits": "Limites de requisições",
+          "webhooks": "Webhooks"
+        }
+      }
     },
     "deals": {
       "title": "Negócios e moeda",

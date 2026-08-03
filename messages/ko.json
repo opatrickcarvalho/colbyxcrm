@@ -1607,7 +1607,21 @@
       "newKeyTitle": "새 API 키",
       "newKeyDesc": "이 키를 사용할 연동 서비스의 이름을 붙이고, 필요한 권한 범위만 부여하세요.",
       "done": "완료",
-      "networkError": "서버에 연결할 수 없습니다"
+      "networkError": "서버에 연결할 수 없습니다",
+      "docs": {
+        "button": "API 문서",
+        "title": "외부 시스템 연결하기",
+        "subtitle": "다른 시스템이 공개 API를 통해 이 계정과 인증하고 통신하는 데 필요한 모든 것입니다.",
+        "sections": {
+          "quickstart": "빠른 시작",
+          "scopes": "권한 범위",
+          "endpoints": "엔드포인트",
+          "pagination": "페이지네이션",
+          "errors": "오류",
+          "rateLimits": "요청 제한",
+          "webhooks": "웹훅"
+        }
+      }
     },
     "deals": {
       "title": "딜 & 통화",

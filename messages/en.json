@@ -1607,7 +1607,21 @@
       "newKeyTitle": "New API key",
       "newKeyDesc": "Name it after the integration that will use it, and grant only the scopes it needs.",
       "done": "Done",
-      "networkError": "Could not reach the server"
+      "networkError": "Could not reach the server",
+      "docs": {
+        "button": "API documentation",
+        "title": "Connect an external system",
+        "subtitle": "Everything another system needs to authenticate and talk to this account through the public API.",
+        "sections": {
+          "quickstart": "Quick start",
+          "scopes": "Scopes",
+          "endpoints": "Endpoints",
+          "pagination": "Pagination",
+          "errors": "Errors",
+          "rateLimits": "Rate limits",
+          "webhooks": "Webhooks"
+        }
+      }
     },
     "deals": {
       "title": "Deals & currency",
