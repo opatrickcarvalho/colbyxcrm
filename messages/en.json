@@ -22,6 +22,7 @@
     "contacts": "Contacts",
     "pipelines": "Pipelines",
     "broadcasts": "Broadcasts",
+    "scheduledMessages": "Scheduled",
     "automations": "Automations",
     "flows": "Flows",
     "aiAgents": "AI Agents",
@@ -202,7 +203,16 @@
       "send": "Send",
       "quickReplyNamePrompt": "Name this quick reply:",
       "quickReplySaved": "Saved as a quick reply.",
-      "quickReplySaveError": "Couldn't save the quick reply."
+      "quickReplySaveError": "Couldn't save the quick reply.",
+      "scheduleSend": "Schedule send",
+      "scheduleDialogTitle": "Schedule this message",
+      "scheduleDialogDescription": "Pick a future date and time — it will be sent automatically.",
+      "scheduleDateLabel": "Date & time",
+      "scheduleConfirm": "Schedule",
+      "scheduleSuccess": "Message scheduled.",
+      "scheduleError": "Couldn't schedule the message.",
+      "scheduleInvalidDate": "Pick a date and time in the future.",
+      "scheduleNothingToSend": "Type a message or attach media first."
     },
     "bubble": {
       "photo": "Photo",
@@ -767,6 +777,35 @@
         "progressDesc": "Processing {current} of {total} recipients...",
         "toastFailedPreview": "Failed to load preview data"
       }
+    }
+  },
+  "ScheduledMessages": {
+    "page": {
+      "title": "Scheduled Messages",
+      "subtitle": "Messages queued to send automatically at a future date and time.",
+      "empty": "No scheduled messages",
+      "emptyHint": "Schedule a message from any conversation in the Inbox.",
+      "table": {
+        "contact": "Contact",
+        "message": "Message",
+        "scheduledAt": "Scheduled for",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "unknownContact": "Unknown contact",
+      "cancel": "Cancel",
+      "cancelConfirm": "Cancel this scheduled message?",
+      "cancelled": "Scheduled message cancelled.",
+      "cancelError": "Couldn't cancel the scheduled message.",
+      "errorLoad": "Failed to load scheduled messages",
+      "retry": "Retry"
+    },
+    "status": {
+      "pending": "Pending",
+      "processing": "Sending",
+      "sent": "Sent",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     }
   },
   "Automations": {

@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -142,6 +143,26 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** Local `datetime-local` floor (now + 1 min) so the picker can't be
+ *  used to "schedule" something that's already due. */
+function minScheduleValue(): string {
+  const d = new Date(Date.now() + 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** What's being scheduled — either the current text draft or the
+ *  currently staged media attachment. Captured at "Agendar" click time
+ *  so the dialog doesn't race further edits to the live composer state. */
+type ScheduleTarget =
+  | { kind: "text"; text: string }
+  | {
+      kind: ComposerMediaKind;
+      mediaUrl: string;
+      filename: string;
+      caption: string;
+    };
+
 /** Worker that encodes mic input to Ogg/Opus entirely in the browser
  *  (vendored from opus-recorder into /public). Recording client-side in a
  *  Meta-accepted format means no server ffmpeg / transcode step. */
@@ -172,6 +193,13 @@ export function MessageComposer({
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+
+  // Schedule-send dialog. `scheduleTarget` is null when the dialog is
+  // closed; set to a snapshot of the text draft or staged media when
+  // the agent clicks "Agendar envio".
+  const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget | null>(null);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [scheduling, setScheduling] = useState(false);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -307,6 +335,107 @@ export function MessageComposer({
     },
     [handleSend]
   );
+
+  // ---- Schedule send ---------------------------------------------------
+
+  const openScheduleForText = useCallback(() => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      toast.error(t("scheduleNothingToSend"));
+      return;
+    }
+    setScheduleAt("");
+    setScheduleTarget({ kind: "text", text: trimmed });
+  }, [text, t]);
+
+  const openScheduleForDraft = useCallback(() => {
+    if (!draft) return;
+    setScheduleAt("");
+    setScheduleTarget({
+      kind: draft.kind,
+      mediaUrl: draft.mediaUrl,
+      filename: draft.filename,
+      caption: draft.caption,
+    });
+  }, [draft]);
+
+  const closeScheduleDialog = useCallback(() => {
+    setScheduleTarget(null);
+    setScheduleAt("");
+  }, []);
+
+  const confirmSchedule = useCallback(async () => {
+    if (!scheduleTarget || !scheduleAt || scheduling) return;
+
+    const scheduledDate = new Date(scheduleAt);
+    if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+      toast.error(t("scheduleInvalidDate"));
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      const body =
+        scheduleTarget.kind === "text"
+          ? {
+              conversation_id: conversationId,
+              message_type: "text",
+              content_text: scheduleTarget.text,
+              scheduled_at: scheduledDate.toISOString(),
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            }
+          : {
+              conversation_id: conversationId,
+              message_type: scheduleTarget.kind,
+              content_text:
+                scheduleTarget.kind === "audio"
+                  ? undefined
+                  : scheduleTarget.caption.trim() || undefined,
+              media_url: scheduleTarget.mediaUrl,
+              filename:
+                scheduleTarget.kind === "document" ? scheduleTarget.filename : undefined,
+              scheduled_at: scheduledDate.toISOString(),
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            };
+
+      const res = await fetch("/api/whatsapp/scheduled-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t("scheduleError"));
+        return;
+      }
+
+      toast.success(t("scheduleSuccess"));
+      if (scheduleTarget.kind === "text") {
+        clearTyping();
+        setText("");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+      } else {
+        // The staged object is now owned by the scheduled row — clear
+        // without GC-ing it (mirrors sendDraft's handoff).
+        setDraft(null);
+      }
+      onClearReply?.();
+      closeScheduleDialog();
+    } catch {
+      toast.error(t("scheduleError"));
+    } finally {
+      setScheduling(false);
+    }
+  }, [
+    scheduleTarget,
+    scheduleAt,
+    scheduling,
+    conversationId,
+    t,
+    clearTyping,
+    onClearReply,
+    closeScheduleDialog,
+  ]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -682,6 +811,7 @@ export function MessageComposer({
           onCaptionChange={setCaption}
           onDiscard={discardDraft}
           onSend={sendDraft}
+          onSchedule={openScheduleForDraft}
           t={t}
         />
       ) : recording ? (
@@ -832,6 +962,19 @@ export function MessageComposer({
           />
 
           <GatedButton
+            variant="ghost"
+            size="sm"
+            canAct={!readOnly}
+            gateReason="send messages"
+            disabled={!text.trim() || sessionExpired}
+            title={readOnly ? undefined : t("scheduleSend")}
+            onClick={openScheduleForText}
+            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:opacity-40"
+          >
+            <Clock className="h-4 w-4" />
+          </GatedButton>
+
+          <GatedButton
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
@@ -892,6 +1035,49 @@ export function MessageComposer({
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
       />
+
+      {/* Schedule-send dialog — shared by the text row and the media
+          draft preview, driven by `scheduleTarget`. */}
+      <Dialog
+        open={!!scheduleTarget}
+        onOpenChange={(open) => {
+          if (!open) closeScheduleDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("scheduleDialogTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("scheduleDialogDescription")}
+          </p>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("scheduleDateLabel")}
+            </label>
+            <input
+              type="datetime-local"
+              value={scheduleAt}
+              min={minScheduleValue()}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary/50"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeScheduleDialog}>
+              {t("cancel")}
+            </Button>
+            <Button disabled={!scheduleAt || scheduling} onClick={confirmSchedule}>
+              {scheduling ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Clock className="mr-1 h-4 w-4" />
+              )}
+              {t("scheduleConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -909,6 +1095,7 @@ function MediaDraftPreview({
   onCaptionChange,
   onDiscard,
   onSend,
+  onSchedule,
   t,
 }: {
   draft: MediaDraft;
@@ -917,6 +1104,7 @@ function MediaDraftPreview({
   onCaptionChange: (caption: string) => void;
   onDiscard: () => void;
   onSend: () => void;
+  onSchedule: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
   return (
@@ -971,15 +1159,27 @@ function MediaDraftPreview({
           />
         )}
         <GatedButton
+          variant="ghost"
+          size="sm"
+          canAct={!readOnly}
+          gateReason="send messages"
+          disabled={busy}
+          title={readOnly ? undefined : t("scheduleSend")}
+          onClick={onSchedule}
+          className={cn(
+            "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:opacity-40",
+            draft.kind === "audio" && "ml-auto",
+          )}
+        >
+          <Clock className="h-4 w-4" />
+        </GatedButton>
+        <GatedButton
           size="sm"
           canAct={!readOnly}
           gateReason="send messages"
           disabled={busy}
           onClick={onSend}
-          className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
-            draft.kind === "audio" && "ml-auto",
-          )}
+          className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
         >
           <Send className="h-4 w-4" />
         </GatedButton>

@@ -22,6 +22,7 @@
     "contacts": "Contatos",
     "pipelines": "Funis",
     "broadcasts": "Transmissões",
+    "scheduledMessages": "Agendados",
     "automations": "Automações",
     "flows": "Fluxos",
     "aiAgents": "Agentes de IA",
@@ -202,7 +203,16 @@
       "send": "Enviar",
       "quickReplyNamePrompt": "Nomeie esta resposta rápida:",
       "quickReplySaved": "Salva como resposta rápida.",
-      "quickReplySaveError": "Não foi possível salvar a resposta rápida."
+      "quickReplySaveError": "Não foi possível salvar a resposta rápida.",
+      "scheduleSend": "Agendar envio",
+      "scheduleDialogTitle": "Agendar esta mensagem",
+      "scheduleDialogDescription": "Escolha uma data e hora futuras — o envio será automático.",
+      "scheduleDateLabel": "Data e hora",
+      "scheduleConfirm": "Agendar",
+      "scheduleSuccess": "Mensagem agendada.",
+      "scheduleError": "Não foi possível agendar a mensagem.",
+      "scheduleInvalidDate": "Escolha uma data e hora futuras.",
+      "scheduleNothingToSend": "Digite uma mensagem ou anexe uma mídia primeiro."
     },
     "bubble": {
       "photo": "Foto",
@@ -767,6 +777,35 @@
         "progressDesc": "Processando {current} de {total} destinatários...",
         "toastFailedPreview": "Falha ao carregar dados de pré-visualização"
       }
+    }
+  },
+  "ScheduledMessages": {
+    "page": {
+      "title": "Mensagens agendadas",
+      "subtitle": "Mensagens na fila para envio automático em uma data e hora futuras.",
+      "empty": "Nenhuma mensagem agendada",
+      "emptyHint": "Agende uma mensagem a partir de qualquer conversa na Caixa de entrada.",
+      "table": {
+        "contact": "Contato",
+        "message": "Mensagem",
+        "scheduledAt": "Agendada para",
+        "status": "Status",
+        "actions": "Ações"
+      },
+      "unknownContact": "Contato desconhecido",
+      "cancel": "Cancelar",
+      "cancelConfirm": "Cancelar esta mensagem agendada?",
+      "cancelled": "Mensagem agendada cancelada.",
+      "cancelError": "Não foi possível cancelar a mensagem agendada.",
+      "errorLoad": "Falha ao carregar mensagens agendadas",
+      "retry": "Tentar novamente"
+    },
+    "status": {
+      "pending": "Pendente",
+      "processing": "Enviando",
+      "sent": "Enviada",
+      "failed": "Falhou",
+      "cancelled": "Cancelada"
     }
   },
   "Automations": {
