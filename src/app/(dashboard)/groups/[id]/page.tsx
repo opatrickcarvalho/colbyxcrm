@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,12 +16,16 @@ import {
   ShieldOff,
   UserMinus,
   UserPlus,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { GroupThread } from '@/components/inbox/group-thread';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { uploadAccountMedia } from '@/lib/storage/upload-media';
 
 interface LiveParticipant {
   jid: string;
@@ -83,6 +87,26 @@ export default function GroupDetailPage() {
   const [resettingLink, setResettingLink] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [stagedImage, setStagedImage] = useState<File | null>(null);
+  const [stagedImageUrl, setStagedImageUrl] = useState<string | null>(null);
+  const [removingImage, setRemovingImage] = useState(false);
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStagedImage(file);
+    setStagedImageUrl(URL.createObjectURL(file));
+    setRemovingImage(false);
+  }
+
+  function onRemoveAvatar() {
+    setStagedImage(null);
+    setStagedImageUrl(null);
+    setRemovingImage(true);
+  }
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/whatsapp/groups/${groupId}`, { cache: 'no-store' });
@@ -96,6 +120,7 @@ export default function GroupDetailPage() {
       const g = data.data as LocalGroup;
       setLocal(g);
       setLive(data.live as LiveGroup | null);
+      setAvatarUrl(data.avatarUrl ?? null);
       setName(g.name);
       setDescription(g.description ?? '');
       setCampaignSlug(g.campaign_slug ?? '');
@@ -123,6 +148,15 @@ export default function GroupDetailPage() {
     if (!local) return;
     setSaving(true);
     try {
+      let finalImageUrl: string | undefined;
+
+      if (removingImage) {
+        finalImageUrl = 'remove';
+      } else if (stagedImage) {
+        const { publicUrl } = await uploadAccountMedia('chat-media', stagedImage);
+        finalImageUrl = publicUrl;
+      }
+
       const res = await fetch(`/api/whatsapp/groups/${groupId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -133,6 +167,7 @@ export default function GroupDetailPage() {
           is_locked: locked !== local.is_locked ? locked : undefined,
           campaign_slug: campaignSlug.trim() || null,
           max_participants: maxParticipants ? Number(maxParticipants) : null,
+          image: finalImageUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -142,6 +177,14 @@ export default function GroupDetailPage() {
       }
       toast.success(t('saved'));
       setLocal(data.data);
+      if (finalImageUrl === 'remove') {
+        setAvatarUrl(null);
+      } else if (finalImageUrl) {
+        setAvatarUrl(finalImageUrl);
+      }
+      setStagedImage(null);
+      setStagedImageUrl(null);
+      setRemovingImage(false);
     } catch {
       toast.error(t('saveError'));
     } finally {
@@ -300,6 +343,47 @@ export default function GroupDetailPage() {
       <div className="rounded-xl border border-border bg-card p-4">
         <h2 className="mb-4 text-sm font-semibold text-foreground">{t('settings')}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-5 mb-2">
+            <Avatar size="lg" className="h-16 w-16">
+              {stagedImageUrl || (avatarUrl && !removingImage) ? (
+                <AvatarImage src={stagedImageUrl || avatarUrl!} alt={name} />
+              ) : null}
+              <AvatarFallback className="bg-primary/10 text-xl text-primary">
+                {name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={onPickFile}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={saving || !canManage}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {avatarUrl ? (t('changePhoto') || 'Mudar foto') : (t('uploadPhoto') || 'Enviar foto')}
+              </Button>
+              {(stagedImageUrl || (avatarUrl && !removingImage)) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onRemoveAvatar}
+                  disabled={saving || !canManage}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('remove') || 'Remover'}
+                </Button>
+              )}
+            </div>
+          </div>
           <div>
             <Label htmlFor="g-name">{t('nameLabel')}</Label>
             <Input id="g-name" value={name} maxLength={25} onChange={(e) => setName(e.target.value)} />

@@ -13,6 +13,7 @@ import {
   GroupsNotAvailableError,
   type UazapiGroup,
 } from '@/lib/whatsapp/providers/uazapi-groups';
+import { fetchChatAvatar } from '@/lib/whatsapp/providers/uazapi';
 
 async function loadLocalGroup(
   supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
@@ -58,16 +59,18 @@ export async function GET(
     }
 
     let live: UazapiGroup | null = null;
+    let avatarUrl: string | null = null;
     try {
       live = await getGroupInfo(creds.host, creds.token, localGroup.group_jid);
+      avatarUrl = await fetchChatAvatar(creds.host, creds.token, localGroup.group_jid);
     } catch (err) {
       console.error(
-        '[GET /api/whatsapp/groups/[id]] getGroupInfo failed:',
+        '[GET /api/whatsapp/groups/[id]] getGroupInfo/fetchChatAvatar failed:',
         err instanceof Error ? err.message : err
       );
     }
 
-    return NextResponse.json({ data: localGroup, live });
+    return NextResponse.json({ data: localGroup, live, avatarUrl });
   } catch (error) {
     return toErrorResponse(error);
   }
