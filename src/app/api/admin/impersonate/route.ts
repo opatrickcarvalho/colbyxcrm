@@ -80,14 +80,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = new URL(request.url).origin;
-
     const { data: linkData, error: linkErr } = await db.auth.admin.generateLink({
       type: 'magiclink',
       email: target.email,
-      options: { redirectTo: `${origin}/dashboard` },
     });
-    if (linkErr || !linkData?.properties?.action_link) {
+    if (linkErr || !linkData?.properties?.hashed_token) {
       console.error('[admin/impersonate] generateLink failed:', linkErr);
       return NextResponse.json(
         { error: 'Failed to create impersonation link' },
@@ -140,7 +137,16 @@ export async function POST(request: Request) {
       maxAge: RETURN_TOKEN_TTL_MS / 1000,
     });
 
-    return NextResponse.json({ redirectUrl: linkData.properties.action_link });
+    // Same-origin confirm route, not Supabase's own action_link — see
+    // the comment on /impersonate/confirm/route.ts for why the direct
+    // link doesn't actually work with cookie-based SSR auth.
+    const confirmParams = new URLSearchParams({
+      token_hash: linkData.properties.hashed_token,
+      redirect: '/dashboard',
+    });
+    return NextResponse.json({
+      redirectUrl: `/api/admin/impersonate/confirm?${confirmParams}`,
+    });
   } catch (err) {
     return toErrorResponse(err);
   }

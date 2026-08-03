@@ -22,7 +22,7 @@ const RETURN_COOKIE = 'wacrm_impersonate_return';
  * for a support tool; it's not a security hole (nothing here regrants
  * access to someone who lost the token).
  */
-export async function POST(request: Request) {
+export async function POST() {
   const cookieStore = await cookies();
   const rawToken = cookieStore.get(RETURN_COOKIE)?.value;
 
@@ -76,14 +76,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const origin = new URL(request.url).origin;
-
   const { data: linkData, error: linkErr } = await db.auth.admin.generateLink({
     type: 'magiclink',
     email: adminProfile.email,
-    options: { redirectTo: `${origin}/admin` },
   });
-  if (linkErr || !linkData?.properties?.action_link) {
+  if (linkErr || !linkData?.properties?.hashed_token) {
     console.error('[admin/impersonate/end] generateLink failed:', linkErr);
     return NextResponse.json(
       { error: 'Failed to restore admin session' },
@@ -104,5 +101,11 @@ export async function POST(request: Request) {
     metadata: {},
   });
 
-  return NextResponse.json({ redirectUrl: linkData.properties.action_link });
+  const confirmParams = new URLSearchParams({
+    token_hash: linkData.properties.hashed_token,
+    redirect: '/admin',
+  });
+  return NextResponse.json({
+    redirectUrl: `/api/admin/impersonate/confirm?${confirmParams}`,
+  });
 }
