@@ -43,7 +43,10 @@ export async function GET(request: Request) {
   });
 
   if (error) {
-    console.error('[admin/impersonate/confirm] verifyOtp failed:', error.message);
+    console.error(
+      '[admin/impersonate/confirm] verifyOtp failed:',
+      error.message
+    );
     return NextResponse.redirect(new URL('/login', origin));
   }
 

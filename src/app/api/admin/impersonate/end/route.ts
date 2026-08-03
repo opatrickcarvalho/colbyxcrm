@@ -43,7 +43,9 @@ export async function POST() {
 
   const { data: session, error: sessionErr } = await db
     .from('admin_impersonation_sessions')
-    .select('id, admin_user_id, target_account_id, target_user_id, status, expires_at')
+    .select(
+      'id, admin_user_id, target_account_id, target_user_id, status, expires_at'
+    )
     .eq('return_token_hash', hash)
     .maybeSingle();
 

@@ -80,10 +80,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: linkData, error: linkErr } = await db.auth.admin.generateLink({
-      type: 'magiclink',
-      email: target.email,
-    });
+    const { data: linkData, error: linkErr } = await db.auth.admin.generateLink(
+      {
+        type: 'magiclink',
+        email: target.email,
+      }
+    );
     if (linkErr || !linkData?.properties?.hashed_token) {
       console.error('[admin/impersonate] generateLink failed:', linkErr);
       return NextResponse.json(
