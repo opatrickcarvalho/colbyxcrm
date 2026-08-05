@@ -23,7 +23,6 @@ import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { GroupThread } from '@/components/inbox/group-thread';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface LiveParticipant {
@@ -574,18 +573,6 @@ export default function GroupDetailPage() {
             ))}
           </ul>
         )}
-      </div>
-
-      {/* Activity — group visibility + light moderation, deliberately not
-          a full attendance inbox (no assignment, no unread counts, no
-          automations). Separate from the contact-centric inbox by design.
-          Same component the inbox's "Grupos" tab uses. */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('activityTitle')}</h2>
-        <p className="mb-4 text-xs text-muted-foreground">{t('activityHint')}</p>
-        <div className="h-96">
-          <GroupThread groupId={groupId} canManage={canManage} />
-        </div>
       </div>
 
       {canManage && (
