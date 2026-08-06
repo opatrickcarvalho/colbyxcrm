@@ -597,7 +597,16 @@ export async function POST(
           db,
           config.account_id,
           phone,
-          message.senderName ?? null
+          // `senderName` on a `fromMe` event is the connected WhatsApp
+          // account's OWN profile push-name (uazapi reports it
+          // regardless of direction) — resolveConversationByPhone uses
+          // this to name a NEW contact and to RENAME an existing one,
+          // so trusting it here would save/overwrite the contact with
+          // the agent's own name on every message sent natively from
+          // the phone, until the next real inbound reply corrected it.
+          // Only a genuine inbound message's senderName identifies the
+          // other party.
+          message.fromMe ? null : (message.senderName ?? null)
         );
 
       // Best-effort profile-photo backfill. uazapi never rides this

@@ -489,13 +489,21 @@ function ConversationItem({
                 {conversation.unread_count}
               </span>
             )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
+            {/* `open` is the default status nearly every conversation
+             *  sits in, so showing its dot unconditionally made every
+             *  row (read or not) look like it had a permanent green
+             *  "unread" marker next to the real unread badge above.
+             *  Only surface the dot for a status that's actually a
+             *  deviation worth flagging (pending/closed). */}
+            {conversation.status !== "open" && (
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  STATUS_COLORS[conversation.status]
+                )}
+                title={conversation.status}
+              />
+            )}
           </div>
         </div>
       </div>

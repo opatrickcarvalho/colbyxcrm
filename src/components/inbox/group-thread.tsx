@@ -151,7 +151,12 @@ export function GroupThread({
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex flex-col ${m.direction === 'outbound' ? 'items-end' : 'items-start'}`}
+                // `min-w-0` is load-bearing: without it a flex item won't
+                // shrink below its content's intrinsic width, so a long
+                // unbroken word/URL pushes the bubble past `max-w-[75%]`
+                // below instead of wrapping — same bug already fixed for
+                // the 1:1 thread in message-actions.tsx (issue #165).
+                className={`flex min-w-0 flex-col ${m.direction === 'outbound' ? 'items-end' : 'items-start'}`}
               >
                 <span className="mb-0.5 text-xs text-muted-foreground">
                   {m.direction === 'outbound' ? t('you') : m.sender_name || m.sender_phone || '—'}
@@ -181,7 +186,7 @@ export function GroupThread({
                       href={m.media_url ?? '#'}
                       target="_blank"
                       rel="noreferrer"
-                      className="underline"
+                      className="break-words underline"
                     >
                       {m.filename || m.content_text || m.content_type}
                     </a>
