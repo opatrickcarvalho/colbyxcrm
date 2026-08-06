@@ -38,3 +38,35 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # Drains automation Wait steps, flows, and scheduled WhatsApp
+  # messages. The app itself schedules nothing (see docs/docker.md) —
+  # this sidecar is the "external scheduler" those endpoints expect,
+  # polling them once a minute over the compose network.
+  cron:
+    image: alpine:3.20
+    depends_on:
+      - app
+    env_file:
+      - .env.local
+    environment:
+      PORT: 3000
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        apk add --no-cache curl >/dev/null
+        if [ -z "$$AUTOMATION_CRON_SECRET" ]; then
+          echo "cron: AUTOMATION_CRON_SECRET not set, exiting" >&2
+          exit 1
+        fi
+        while true; do
+          for path in automations/cron flows/cron whatsapp/scheduled-messages/cron; do
+            curl -fsS -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
+              "http://app:$$PORT/api/$$path" -o /dev/null \
+              || echo "cron: ping failed for $$path" >&2
+          done
+          sleep 60
+        done
+    restart: unless-stopped

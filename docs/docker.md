@@ -1,10 +1,10 @@
 # Running with Docker
 
 The repo ships a multi-stage `Dockerfile` (Next.js standalone output,
-runs as a non-root user) and a `docker-compose.yml` with a single
-`app` service. Supabase is external — point the app at your hosted
-(or self-hosted) Supabase project via env vars; no database container
-is included.
+runs as a non-root user) and a `docker-compose.yml` with an `app`
+service plus a `cron` sidecar that drains scheduled work. Supabase is
+external — point the app at your hosted (or self-hosted) Supabase
+project via env vars; no database container is included.
 
 ## Quick start
 
@@ -58,10 +58,14 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
 - Database migrations under `supabase/` are **not** run by the
   container — apply them with the Supabase CLI as described in the
   README.
-- Nothing inside the container is scheduled. If you use automation
-  Wait steps, flows, or scheduled WhatsApp messages, point an external
-  scheduler at `GET /api/automations/cron`, `GET /api/flows/cron`, and
-  `GET /api/whatsapp/scheduled-messages/cron` on this deployment,
-  sending the shared secret in the `x-cron-secret` header
-  (`AUTOMATION_CRON_SECRET`, see `.env.local.example`). All three
-  return 503 until that variable is set.
+- The `app` container itself schedules nothing. The `cron` service in
+  `docker-compose.yml` is what polls `GET /api/automations/cron`,
+  `GET /api/flows/cron`, and `GET /api/whatsapp/scheduled-messages/cron`
+  once a minute (over the compose network, so it works whether or not
+  the app is publicly reachable), sending the shared secret in the
+  `x-cron-secret` header. It reads that secret — `AUTOMATION_CRON_SECRET`,
+  see `.env.local.example` — from the same `.env.local`, and refuses to
+  start if it's unset. All three endpoints return 503 until that
+  variable is set. Not using Compose (e.g. `docker run` / "Plain
+  Docker" below)? Point your own external scheduler at those three
+  routes instead.
