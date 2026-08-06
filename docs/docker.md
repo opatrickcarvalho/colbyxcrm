@@ -60,12 +60,13 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   README.
 - The `app` container itself schedules nothing. The `cron` service in
   `docker-compose.yml` is what polls `GET /api/automations/cron`,
-  `GET /api/flows/cron`, and `GET /api/whatsapp/scheduled-messages/cron`
-  once a minute (over the compose network, so it works whether or not
-  the app is publicly reachable), sending the shared secret in the
-  `x-cron-secret` header. It reads that secret — `AUTOMATION_CRON_SECRET`,
-  see `.env.local.example` — from the same `.env.local`, and refuses to
-  start if it's unset. All three endpoints return 503 until that
+  `GET /api/flows/cron`, `GET /api/whatsapp/scheduled-messages/cron`,
+  and `GET /api/whatsapp/group-broadcasts/cron` once a minute (over the
+  compose network, so it works whether or not the app is publicly
+  reachable), sending the shared secret in the `x-cron-secret` header.
+  It reads that secret — `AUTOMATION_CRON_SECRET`, see
+  `.env.local.example` — from the same `.env.local`, and refuses to
+  start if it's unset. All four endpoints return 503 until that
   variable is set. Not using Compose (e.g. `docker run` / "Plain
-  Docker" below)? Point your own external scheduler at those three
+  Docker" below)? Point your own external scheduler at those four
   routes instead.

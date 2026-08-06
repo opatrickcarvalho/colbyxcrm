@@ -24,6 +24,7 @@
     "broadcasts": "브로드캐스트",
     "scheduledMessages": "예약됨",
     "groups": "그룹",
+    "groupBroadcasts": "그룹 발송",
     "automations": "자동화",
     "flows": "플로우",
     "aiAgents": "AI 에이전트",
@@ -903,6 +904,84 @@
       "uploadError": "업로드에 실패했습니다."
     }
   },
+  "GroupBroadcasts": {
+    "list": {
+      "title": "그룹 발송",
+      "subtitle": "여러 WhatsApp 그룹에 한 번에 텍스트나 미디어를 보내고, 전송 간격을 직접 설정하세요.",
+      "newBroadcast": "새 캠페인",
+      "noBroadcastsYet": "아직 캠페인이 없습니다",
+      "createFirst": "여기서 첫 그룹 발송 캠페인을 만들어보세요.",
+      "errorLoad": "캠페인을 불러오지 못했습니다",
+      "retry": "다시 시도",
+      "failedSuffix": "실패",
+      "table": {
+        "name": "이름",
+        "progress": "진행률",
+        "status": "상태",
+        "delay": "간격",
+        "created": "생성일"
+      }
+    },
+    "status": {
+      "pending": "대기 중",
+      "sending": "전송 중",
+      "processing": "처리 중",
+      "sent": "전송됨",
+      "failed": "실패",
+      "cancelled": "취소됨"
+    },
+    "new": {
+      "title": "새 그룹 캠페인",
+      "subtitle": "Uazapi로 연결된 계정에서만 사용할 수 있습니다 — 그룹은 Meta 공식 API에 존재하지 않습니다.",
+      "nameLabel": "캠페인 이름",
+      "namePlaceholder": "예: 2026 런칭 — VIP 그룹",
+      "contentTypeLabel": "콘텐츠 유형",
+      "contentType": {
+        "text": "텍스트",
+        "image": "이미지",
+        "video": "동영상",
+        "document": "문서",
+        "audio": "오디오"
+      },
+      "messageLabel": "메시지",
+      "captionLabel": "캡션 (선택)",
+      "messagePlaceholder": "선택한 그룹에 보낼 메시지를 입력하세요…",
+      "mediaLabel": "파일",
+      "attachFile": "파일 첨부",
+      "uploading": "파일 업로드 중…",
+      "uploadError": "파일 업로드에 실패했습니다.",
+      "delayLabel": "그룹 간 간격(초)",
+      "delayHint": "설정에 저장된 기본값으로 미리 채워집니다 — 이 캠페인에만 조정할 수 있습니다.",
+      "scheduleLabel": "예약 시간 (선택)",
+      "scheduleHint": "비워두면 캠페인 생성 즉시 전송을 시작합니다.",
+      "groupsLabel": "선택된 그룹 ({count})",
+      "selectAllActive": "활성 그룹 모두 선택",
+      "clearSelection": "선택 해제",
+      "groupFilterPlaceholder": "이름 또는 캠페인 태그로 검색…",
+      "noGroupsFound": "그룹을 찾을 수 없습니다.",
+      "cancel": "취소",
+      "submit": "캠페인 만들기",
+      "createError": "캠페인을 만들지 못했습니다.",
+      "createSuccess": "캠페인이 생성되었습니다."
+    },
+    "detail": {
+      "backToList": "그룹 발송으로 돌아가기",
+      "notFound": "캠페인을 찾을 수 없습니다",
+      "progress": "진행률",
+      "delaySummary": "그룹당 {seconds}초 간격",
+      "failedCount": "{count}건 전송 실패",
+      "cancel": "캠페인 취소",
+      "cancelError": "캠페인을 취소하지 못했습니다.",
+      "cancelSuccess": "캠페인이 취소되었습니다.",
+      "unknownGroup": "삭제된 그룹",
+      "table": {
+        "group": "그룹",
+        "status": "상태",
+        "sendAt": "전송 시각",
+        "error": "오류"
+      }
+    }
+  },
   "Automations": {
     "list": {
       "title": "자동화",
@@ -1768,6 +1847,18 @@
       "saving": "저장 중...",
       "saveFailed": "기본 통화를 저장하지 못했습니다",
       "saveSuccess": "기본 통화가 업데이트되었습니다"
+    },
+    "groupBroadcasts": {
+      "title": "그룹 발송",
+      "description": "그룹 발송 캠페인에서 각 전송 사이의 기본 간격입니다.",
+      "delayLabel": "전송 간격",
+      "delayHint": "권장 시작값입니다 — WhatsApp은 이 채널(Uazapi)에 대한 공식 제한을 공개하지 않으므로, 시스템이 강제하는 규칙이 아니라 단순 권장값입니다.",
+      "delayFieldLabel": "그룹당 간격(초)",
+      "adminOnlyHint": "계정 관리자만 이 값을 변경할 수 있습니다.",
+      "save": "저장",
+      "saving": "저장 중...",
+      "saveFailed": "설정을 저장하지 못했습니다",
+      "saveSuccess": "설정이 업데이트되었습니다"
     },
     "aiConfig": {
       "title": "에이전트 설정",

@@ -181,6 +181,13 @@ export const RATE_LIMITS = {
    *  a runaway script against the WhatsApp account's own group-action
    *  limits (WhatsApp itself throttles group creation/adds heavily). */
   groupManage: { limit: 30, windowMs: 60_000 },
+  /** Group-broadcast campaign creation, per user. Lower than
+   *  `groupManage` on purpose — creating a campaign fans out to
+   *  potentially many groups at once, so the *start* of that fan-out
+   *  is throttled tighter than a single group action. Pacing between
+   *  the individual sends inside a campaign is handled separately by
+   *  the account's configurable `delay_seconds`, not by this bucket. */
+  groupBroadcastCreate: { limit: 10, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

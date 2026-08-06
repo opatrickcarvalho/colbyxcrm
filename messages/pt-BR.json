@@ -24,6 +24,7 @@
     "broadcasts": "Transmissões",
     "scheduledMessages": "Agendados",
     "groups": "Grupos",
+    "groupBroadcasts": "Disparo em grupos",
     "automations": "Automações",
     "flows": "Fluxos",
     "aiAgents": "Agentes de IA",
@@ -903,6 +904,84 @@
       "uploadError": "Falha no upload."
     }
   },
+  "GroupBroadcasts": {
+    "list": {
+      "title": "Disparo em grupos",
+      "subtitle": "Envie texto ou mídia para vários grupos de WhatsApp de uma vez, com intervalo configurável entre cada envio.",
+      "newBroadcast": "Nova campanha",
+      "noBroadcastsYet": "Nenhuma campanha ainda",
+      "createFirst": "Crie sua primeira campanha de disparo para grupos por aqui.",
+      "errorLoad": "Falha ao carregar as campanhas",
+      "retry": "Tentar novamente",
+      "failedSuffix": "falharam",
+      "table": {
+        "name": "Nome",
+        "progress": "Progresso",
+        "status": "Status",
+        "delay": "Intervalo",
+        "created": "Criado em"
+      }
+    },
+    "status": {
+      "pending": "Pendente",
+      "sending": "Enviando",
+      "processing": "Processando",
+      "sent": "Enviado",
+      "failed": "Falhou",
+      "cancelled": "Cancelado"
+    },
+    "new": {
+      "title": "Nova campanha de grupos",
+      "subtitle": "Disponível apenas para contas conectadas via Uazapi — grupos não existem na API oficial da Meta.",
+      "nameLabel": "Nome da campanha",
+      "namePlaceholder": "ex.: Lançamento 2026 — grupos VIP",
+      "contentTypeLabel": "Tipo de conteúdo",
+      "contentType": {
+        "text": "Texto",
+        "image": "Imagem",
+        "video": "Vídeo",
+        "document": "Documento",
+        "audio": "Áudio"
+      },
+      "messageLabel": "Mensagem",
+      "captionLabel": "Legenda (opcional)",
+      "messagePlaceholder": "Escreva a mensagem que será enviada aos grupos selecionados…",
+      "mediaLabel": "Arquivo",
+      "attachFile": "Anexar arquivo",
+      "uploading": "Enviando arquivo…",
+      "uploadError": "Falha no upload do arquivo.",
+      "delayLabel": "Intervalo entre grupos (segundos)",
+      "delayHint": "Pré-preenchido com o valor configurado em Configurações — pode ser ajustado só para esta campanha.",
+      "scheduleLabel": "Agendar para (opcional)",
+      "scheduleHint": "Deixe em branco para começar a enviar assim que a campanha for criada.",
+      "groupsLabel": "Grupos selecionados ({count})",
+      "selectAllActive": "Selecionar todos ativos",
+      "clearSelection": "Limpar seleção",
+      "groupFilterPlaceholder": "Buscar por nome ou tag de campanha…",
+      "noGroupsFound": "Nenhum grupo encontrado.",
+      "cancel": "Cancelar",
+      "submit": "Criar campanha",
+      "createError": "Não foi possível criar a campanha.",
+      "createSuccess": "Campanha criada."
+    },
+    "detail": {
+      "backToList": "Voltar para Disparo em grupos",
+      "notFound": "Campanha não encontrada",
+      "progress": "Progresso",
+      "delaySummary": "{seconds}s entre cada grupo",
+      "failedCount": "{count} envio(s) falharam",
+      "cancel": "Cancelar campanha",
+      "cancelError": "Não foi possível cancelar a campanha.",
+      "cancelSuccess": "Campanha cancelada.",
+      "unknownGroup": "Grupo removido",
+      "table": {
+        "group": "Grupo",
+        "status": "Status",
+        "sendAt": "Enviado em",
+        "error": "Erro"
+      }
+    }
+  },
   "Automations": {
     "list": {
       "title": "Automações",
@@ -1768,6 +1847,18 @@
       "saving": "Salvando...",
       "saveFailed": "Falha ao salvar a moeda padrão",
       "saveSuccess": "Moeda padrão atualizada"
+    },
+    "groupBroadcasts": {
+      "title": "Disparo em grupos",
+      "description": "Ritmo padrão entre um envio e outro dentro de uma campanha de disparo para grupos.",
+      "delayLabel": "Intervalo entre envios",
+      "delayHint": "Sugestão de ponto de partida — o WhatsApp não publica limites oficiais para este canal (Uazapi), então isso é apenas um valor recomendado, não uma regra imposta pelo sistema.",
+      "delayFieldLabel": "Segundos entre cada grupo",
+      "adminOnlyHint": "Somente administradores da conta podem mudar este valor.",
+      "save": "Salvar",
+      "saving": "Salvando...",
+      "saveFailed": "Falha ao salvar a configuração",
+      "saveSuccess": "Configuração atualizada"
     },
     "aiConfig": {
       "title": "Configuração do agente",

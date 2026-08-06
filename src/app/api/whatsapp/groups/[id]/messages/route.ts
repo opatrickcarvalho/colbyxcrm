@@ -6,6 +6,7 @@ import {
   resolveGroupCredentials,
   GroupsNotAvailableError,
 } from '@/lib/whatsapp/providers/uazapi-groups';
+import { sendGroupContent, type GroupContentType } from '@/lib/whatsapp/group-broadcast';
 
 const MEDIA_KINDS = new Set(['image', 'video', 'document', 'audio']);
 
@@ -110,19 +111,13 @@ export async function POST(
 
     let providerMessageId: string;
     try {
-      if (content_type === 'text') {
-        const result = await provider.sendText({ to: group.group_jid, text: content_text! });
-        providerMessageId = result.messageId;
-      } else {
-        const result = await provider.sendMedia({
-          to: group.group_jid,
-          kind: content_type as 'image' | 'video' | 'document' | 'audio',
-          link: media_url!,
-          caption: content_type === 'audio' ? undefined : content_text || undefined,
-          filename: content_type === 'document' ? filename : undefined,
-        });
-        providerMessageId = result.messageId;
-      }
+      const result = await sendGroupContent(provider, group.group_jid, {
+        content_type: content_type as GroupContentType,
+        content_text,
+        media_url,
+        filename,
+      });
+      providerMessageId = result.messageId;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown provider error';
       console.error('[POST /api/whatsapp/groups/[id]/messages] send failed:', message);

@@ -62,7 +62,7 @@ services:
           exit 1
         fi
         while true; do
-          for path in automations/cron flows/cron whatsapp/scheduled-messages/cron; do
+          for path in automations/cron flows/cron whatsapp/scheduled-messages/cron whatsapp/group-broadcasts/cron; do
             curl -fsS -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
               "http://app:$$PORT/api/$$path" -o /dev/null \
               || echo "cron: ping failed for $$path" >&2

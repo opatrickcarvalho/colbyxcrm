@@ -19,6 +19,7 @@ import { TemplateManager } from '@/components/settings/template-manager';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { DealsSettings } from '@/components/settings/deals-settings';
+import { GroupBroadcastSettings } from '@/components/settings/group-broadcast-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import {
@@ -68,6 +69,10 @@ function SettingsPageInner() {
   const [templatesEnabled, setTemplatesEnabled] = useState<boolean | null>(
     null,
   );
+  // Group broadcasts are UAZAPI-only (Meta has no group support at
+  // all — see src/lib/whatsapp/providers/capabilities.ts). Same
+  // "hide rather than show-but-broken" treatment as `templatesEnabled`.
+  const [groupsEnabled, setGroupsEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,10 +98,11 @@ function SettingsPageInner() {
         .maybeSingle();
 
       if (cancelled) return;
-      setTemplatesEnabled(
-        getCapabilities(isProviderId(config?.provider) ? config.provider : 'meta')
-          .templates,
+      const capabilities = getCapabilities(
+        isProviderId(config?.provider) ? config.provider : 'meta',
       );
+      setTemplatesEnabled(capabilities.templates);
+      setGroupsEnabled(capabilities.groups);
     };
     loadCapabilities();
     return () => {
@@ -104,19 +110,25 @@ function SettingsPageInner() {
     };
   }, []);
 
-  // Defend against a stale/bookmarked `?tab=templates` link on an
-  // account whose provider doesn't support templates.
+  // Defend against a stale/bookmarked `?tab=templates` (or
+  // `?tab=group-broadcasts`) link on an account whose provider doesn't
+  // support that capability.
   useEffect(() => {
     if (templatesEnabled === false && section === 'templates') {
       go('overview');
     }
+    if (groupsEnabled === false && section === 'group-broadcasts') {
+      go('overview');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templatesEnabled, section]);
+  }, [templatesEnabled, groupsEnabled, section]);
 
-  const hiddenSections = useMemo(
-    () => (templatesEnabled === false ? (['templates'] as const) : []),
-    [templatesEnabled],
-  );
+  const hiddenSections = useMemo(() => {
+    const hidden: SettingsSection[] = [];
+    if (templatesEnabled === false) hidden.push('templates');
+    if (groupsEnabled === false) hidden.push('group-broadcasts');
+    return hidden;
+  }, [templatesEnabled, groupsEnabled]);
 
   // Cheap, fetch-free rail hints. The Overview landing carries the
   // full live status/counts; the rail just surfaces the two that are
@@ -139,6 +151,7 @@ function SettingsPageInner() {
     'quick-replies': <QuickRepliesManager />,
     fields: <FieldsAndTagsPanel />,
     deals: <DealsSettings />,
+    'group-broadcasts': <GroupBroadcastSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,
   };

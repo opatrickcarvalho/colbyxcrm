@@ -24,6 +24,7 @@
     "broadcasts": "Broadcasts",
     "scheduledMessages": "Scheduled",
     "groups": "Groups",
+    "groupBroadcasts": "Group broadcasts",
     "automations": "Automations",
     "flows": "Flows",
     "aiAgents": "AI Agents",
@@ -903,6 +904,84 @@
       "uploadError": "Upload failed."
     }
   },
+  "GroupBroadcasts": {
+    "list": {
+      "title": "Group broadcasts",
+      "subtitle": "Send text or media to several WhatsApp groups at once, with a configurable delay between each send.",
+      "newBroadcast": "New campaign",
+      "noBroadcastsYet": "No campaigns yet",
+      "createFirst": "Create your first group-broadcast campaign here.",
+      "errorLoad": "Failed to load campaigns",
+      "retry": "Retry",
+      "failedSuffix": "failed",
+      "table": {
+        "name": "Name",
+        "progress": "Progress",
+        "status": "Status",
+        "delay": "Delay",
+        "created": "Created"
+      }
+    },
+    "status": {
+      "pending": "Pending",
+      "sending": "Sending",
+      "processing": "Processing",
+      "sent": "Sent",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "new": {
+      "title": "New group campaign",
+      "subtitle": "Only available for accounts connected via Uazapi — groups don't exist on Meta's official API.",
+      "nameLabel": "Campaign name",
+      "namePlaceholder": "e.g. 2026 launch — VIP groups",
+      "contentTypeLabel": "Content type",
+      "contentType": {
+        "text": "Text",
+        "image": "Image",
+        "video": "Video",
+        "document": "Document",
+        "audio": "Audio"
+      },
+      "messageLabel": "Message",
+      "captionLabel": "Caption (optional)",
+      "messagePlaceholder": "Write the message that will be sent to the selected groups…",
+      "mediaLabel": "File",
+      "attachFile": "Attach file",
+      "uploading": "Uploading file…",
+      "uploadError": "File upload failed.",
+      "delayLabel": "Delay between groups (seconds)",
+      "delayHint": "Prefilled from your Settings default — you can adjust it for just this campaign.",
+      "scheduleLabel": "Schedule for (optional)",
+      "scheduleHint": "Leave blank to start sending as soon as the campaign is created.",
+      "groupsLabel": "Selected groups ({count})",
+      "selectAllActive": "Select all active",
+      "clearSelection": "Clear selection",
+      "groupFilterPlaceholder": "Search by name or campaign tag…",
+      "noGroupsFound": "No groups found.",
+      "cancel": "Cancel",
+      "submit": "Create campaign",
+      "createError": "Couldn't create the campaign.",
+      "createSuccess": "Campaign created."
+    },
+    "detail": {
+      "backToList": "Back to Group broadcasts",
+      "notFound": "Campaign not found",
+      "progress": "Progress",
+      "delaySummary": "{seconds}s between each group",
+      "failedCount": "{count} send(s) failed",
+      "cancel": "Cancel campaign",
+      "cancelError": "Couldn't cancel the campaign.",
+      "cancelSuccess": "Campaign cancelled.",
+      "unknownGroup": "Removed group",
+      "table": {
+        "group": "Group",
+        "status": "Status",
+        "sendAt": "Sent at",
+        "error": "Error"
+      }
+    }
+  },
   "Automations": {
     "list": {
       "title": "Automations",
@@ -1768,6 +1847,18 @@
       "saving": "Saving...",
       "saveFailed": "Failed to save default currency",
       "saveSuccess": "Default currency updated"
+    },
+    "groupBroadcasts": {
+      "title": "Group broadcasts",
+      "description": "Default pacing between one send and the next inside a group-broadcast campaign.",
+      "delayLabel": "Delay between sends",
+      "delayHint": "Suggested starting point — WhatsApp publishes no official limits for this (Uazapi) channel, so this is a recommendation, not a rule the system enforces.",
+      "delayFieldLabel": "Seconds between each group",
+      "adminOnlyHint": "Only account admins can change this value.",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveFailed": "Failed to save the setting",
+      "saveSuccess": "Setting updated"
     },
     "aiConfig": {
       "title": "Agent setup",
