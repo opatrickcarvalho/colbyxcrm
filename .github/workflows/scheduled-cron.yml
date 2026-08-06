@@ -1,0 +1,30 @@
+name: Scheduled cron drain
+
+# Polls the endpoints that drain automation Wait steps, flows, and
+# scheduled WhatsApp messages (see docs/docker.md). Production runs on
+# Hostinger's managed Node.js app hosting, which has no built-in
+# cron/task scheduler — this workflow is the "external scheduler"
+# those endpoints expect. Requires the AUTOMATION_CRON_SECRET repo
+# secret to match the one set in the Hostinger environment variables.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping cron endpoints
+        env:
+          CRON_SECRET: ${{ secrets.AUTOMATION_CRON_SECRET }}
+          BASE_URL: https://crm.colbyx.com.br
+        run: |
+          status=0
+          for path in automations/cron flows/cron whatsapp/scheduled-messages/cron; do
+            if ! curl -fsS -H "x-cron-secret: $CRON_SECRET" "$BASE_URL/api/$path" -o /dev/null; then
+              echo "::error::ping failed for $path"
+              status=1
+            fi
+          done
+          exit $status
