@@ -27,7 +27,9 @@ export interface GroupMessage {
   created_at: string;
 }
 
-function mimeToMediaKind(mime: string): 'image' | 'video' | 'audio' | 'document' {
+function mimeToMediaKind(
+  mime: string
+): 'image' | 'video' | 'audio' | 'document' {
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
@@ -102,7 +104,10 @@ export function GroupThread({
     if (!text || sendingMessage) return;
     setSendingMessage(true);
     try {
-      const ok = await sendGroupMessage({ content_type: 'text', content_text: text });
+      const ok = await sendGroupMessage({
+        content_type: 'text',
+        content_text: text,
+      });
       if (ok) setComposerText('');
     } finally {
       setSendingMessage(false);
@@ -140,10 +145,10 @@ export function GroupThread({
       <div className="flex-1 overflow-y-auto p-4">
         {messagesLoading ? (
           <div className="flex h-32 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="text-primary h-5 w-5 animate-spin" />
           </div>
         ) : messages.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground py-6 text-center text-sm">
             {t('activityEmpty')}
           </p>
         ) : (
@@ -158,8 +163,10 @@ export function GroupThread({
                 // the 1:1 thread in message-actions.tsx (issue #165).
                 className={`flex min-w-0 flex-col ${m.direction === 'outbound' ? 'items-end' : 'items-start'}`}
               >
-                <span className="mb-0.5 text-xs text-muted-foreground">
-                  {m.direction === 'outbound' ? t('you') : m.sender_name || m.sender_phone || '—'}
+                <span className="text-muted-foreground mb-0.5 text-xs">
+                  {m.direction === 'outbound'
+                    ? t('you')
+                    : m.sender_name || m.sender_phone || '—'}
                 </span>
                 <div
                   className={`max-w-[75%] rounded-xl px-3 py-2 text-sm ${
@@ -169,7 +176,9 @@ export function GroupThread({
                   }`}
                 >
                   {m.content_type === 'text' ? (
-                    <p className="whitespace-pre-wrap break-words">{m.content_text}</p>
+                    <p className="break-words whitespace-pre-wrap">
+                      {m.content_text}
+                    </p>
                   ) : m.content_type === 'image' ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -178,9 +187,17 @@ export function GroupThread({
                       className="max-h-52 rounded-lg object-cover"
                     />
                   ) : m.content_type === 'video' ? (
-                    <video src={m.media_url ?? undefined} controls className="max-h-52 rounded-lg" />
+                    <video
+                      src={m.media_url ?? undefined}
+                      controls
+                      className="max-h-52 rounded-lg"
+                    />
                   ) : m.content_type === 'audio' ? (
-                    <audio src={m.media_url ?? undefined} controls className="w-56" />
+                    <audio
+                      src={m.media_url ?? undefined}
+                      controls
+                      className="w-56"
+                    />
                   ) : (
                     <a
                       href={m.media_url ?? '#'}
@@ -192,7 +209,9 @@ export function GroupThread({
                     </a>
                   )}
                   {m.content_type !== 'text' && m.content_text && (
-                    <p className="mt-1 whitespace-pre-wrap break-words">{m.content_text}</p>
+                    <p className="mt-1 break-words whitespace-pre-wrap">
+                      {m.content_text}
+                    </p>
                   )}
                 </div>
               </div>
@@ -202,7 +221,7 @@ export function GroupThread({
       </div>
 
       {canManage && (
-        <div className="flex items-end gap-2 border-t border-border p-3">
+        <div className="border-border flex items-end gap-2 border-t p-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -219,7 +238,7 @@ export function GroupThread({
             title={t('attach')}
             disabled={uploadingAttachment}
             onClick={() => fileInputRef.current?.click()}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 p-0"
           >
             {uploadingAttachment ? (
               <Loader2 className="h-4 w-4 animate-spin" />

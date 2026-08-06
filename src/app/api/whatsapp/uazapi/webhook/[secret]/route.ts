@@ -391,9 +391,12 @@ export async function POST(
       return NextResponse.json({ ok: true, ignored: 'groups_no_jid' });
     }
 
-    const participants = (raw.Participants ?? raw.participants ?? []) as unknown[];
+    const participants = (raw.Participants ??
+      raw.participants ??
+      []) as unknown[];
     const name = (raw.Name as string) || (raw.name as string) || null;
-    const description = (raw.Topic as string) || (raw.description as string) || null;
+    const description =
+      (raw.Topic as string) || (raw.description as string) || null;
     const isAnnounce = Boolean(raw.IsAnnounce ?? raw.isAnnounce ?? false);
     const isLocked = Boolean(raw.IsLocked ?? raw.isLocked ?? false);
 
@@ -427,16 +430,18 @@ export async function POST(
     } else if (name) {
       // Only auto-create when we at least have a name — a bare
       // membership delta with no name shouldn't spawn a half-empty row.
-      const { error: groupInsertErr } = await db.from('whatsapp_groups').insert({
-        account_id: config.account_id,
-        whatsapp_config_id: config.id,
-        group_jid: groupJid,
-        name,
-        description,
-        participant_count: participants.length,
-        is_announce: isAnnounce,
-        is_locked: isLocked,
-      });
+      const { error: groupInsertErr } = await db
+        .from('whatsapp_groups')
+        .insert({
+          account_id: config.account_id,
+          whatsapp_config_id: config.id,
+          group_jid: groupJid,
+          name,
+          description,
+          participant_count: participants.length,
+          is_announce: isAnnounce,
+          is_locked: isLocked,
+        });
       if (groupInsertErr) {
         console.error(
           '[uazapi/webhook] groups: insert failed:',
