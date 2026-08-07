@@ -113,6 +113,15 @@ export interface Contact {
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];
+  /**
+   * Best-effort online/last-seen, fed by UAZAPI's undocumented
+   * `presence` webhook event (migration 047). Frequently null — most
+   * WhatsApp numbers hide this from a non-contact at the privacy
+   * level, so absence means "unknown", not "never online".
+   */
+  presence_status?: 'available' | 'unavailable';
+  presence_updated_at?: string;
+  last_seen_at?: string;
 }
 
 export interface Tag {
@@ -181,6 +190,23 @@ export interface Conversation {
   ai_autoreply_disabled?: boolean;
   ai_reply_count?: number;
   ai_handoff_summary?: string | null;
+  /** Hydrated by queries that embed conversation_whatsapp_labels(whatsapp_labels(*)). */
+  labels?: WhatsAppLabel[];
+}
+
+/**
+ * A real WhatsApp Business label, mirrored from UAZAPI (migration
+ * 048) — not a CRM-only tag. `color_code` is uazapi's fixed 0-19
+ * palette index, not a free hex color.
+ */
+export interface WhatsAppLabel {
+  id: string;
+  account_id: string;
+  uazapi_label_id: string;
+  name: string;
+  color_code: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // ============================================================
@@ -253,6 +279,15 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /**
+   * Delivery-ladder timestamps, mirroring the same fields on
+   * `broadcast_recipients`. Populated by the UAZAPI/Meta webhooks as
+   * `messages.status` advances; null until that tick fires. Migration
+   * 046.
+   */
+  sent_at?: string;
+  delivered_at?: string;
+  read_at?: string;
 }
 
 export type ReactionActor = 'customer' | 'agent';

@@ -79,6 +79,11 @@ export interface ProviderCapabilities {
    * Cloud API has no group surface for a WhatsApp Business number.
    */
   groups: boolean;
+  /**
+   * WhatsApp Business labels (`/labels`, `/chat/labels`) — UAZAPI-only,
+   * no equivalent on the Meta Cloud API.
+   */
+  labels: boolean;
 }
 
 /**

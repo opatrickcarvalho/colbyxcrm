@@ -28,6 +28,7 @@ export const META_CAPABILITIES: ProviderCapabilities = {
   inboundMediaNeedsFetch: true,
   presence: false,
   groups: false,
+  labels: false,
 };
 
 export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
@@ -40,6 +41,7 @@ export const UAZAPI_CAPABILITIES: ProviderCapabilities = {
   inboundMediaNeedsFetch: false,
   presence: true,
   groups: true,
+  labels: true,
 };
 
 /** Look up a provider's capabilities by id without building a full adapter. */

@@ -275,11 +275,116 @@ export async function registerWebhook(
     body: {
       enabled: true,
       url,
-      events: ['messages', 'messages_update', 'connection', 'groups'],
+      events: [
+        'messages',
+        'messages_update',
+        'connection',
+        'groups',
+        // presence: contact online/last-seen (best-effort — payload is
+        // undocumented and most numbers hide this from a non-contact
+        // anyway). labels/chat_labels: WhatsApp Business label sync.
+        'presence',
+        'labels',
+        'chat_labels',
+      ],
       excludeMessages: ['wasSentByApi'],
       addUrlEvents: false,
       addUrlTypesMessages: false,
     },
+  });
+}
+
+/**
+ * Set the connected account's own online/available state.
+ *
+ * Not cosmetic: per uazapi's docs, when the instance is the only
+ * active device and its presence is "unavailable", delivery/read
+ * ticks (`messages_update` webhooks) stop being sent or received
+ * entirely — the whole point of the read-receipt feature silently
+ * breaks. Called once right after a successful `connectInstance()` so
+ * a fresh pairing starts in the state the tick feature depends on.
+ */
+export async function setInstancePresence(
+  host: string,
+  token: string,
+  presence: 'available' | 'unavailable'
+): Promise<void> {
+  await uazapiFetch<unknown>({
+    host,
+    path: '/instance/presence',
+    auth: { kind: 'token', value: token },
+    body: { presence },
+  });
+}
+
+// ------------------------------------------------------------
+// WhatsApp Business labels — the CRM's "conversation label" feature
+// IS this, not a parallel CRM-only tag (see migration 048's doc
+// comment). All three calls hit the instance the same way the rest of
+// this file does: token auth, JSON body.
+// ------------------------------------------------------------
+
+export interface UazapiLabel {
+  labelid: string;
+  name: string;
+  color: number;
+}
+
+/** GET /labels — every label defined on this WhatsApp Business instance. */
+export async function listLabels(
+  host: string,
+  token: string
+): Promise<UazapiLabel[]> {
+  const raw = await uazapiFetch<unknown>({
+    host,
+    path: '/labels',
+    auth: { kind: 'token', value: token },
+    method: 'GET',
+  });
+  if (!Array.isArray(raw)) return [];
+  return raw.map((l) => {
+    const row = (l ?? {}) as Record<string, unknown>;
+    return {
+      labelid: String(row.labelid ?? row.id ?? ''),
+      name: String(row.name ?? ''),
+      color: Number(row.color ?? 0),
+    };
+  });
+}
+
+/**
+ * POST /label/edit — create (`labelid: "new"`), rename/recolor, or
+ * delete a label. Returns the label id uazapi assigned/used, when the
+ * response includes it — callers that create a label still need a
+ * follow-up `listLabels()` if it doesn't (per uazapi's own docs).
+ */
+export async function editLabel(
+  host: string,
+  token: string,
+  args: { labelid: string; name?: string; color?: number; delete?: boolean }
+): Promise<void> {
+  await uazapiFetch<unknown>({
+    host,
+    path: '/label/edit',
+    auth: { kind: 'token', value: token },
+    body: args,
+  });
+}
+
+/** POST /chat/labels — apply/remove/replace a chat's label set. */
+export async function setChatLabels(
+  host: string,
+  token: string,
+  args:
+    | { number: string; add_labelid: string }
+    | { number: string; remove_labelid: string }
+    | { number: string; labelids: string[] }
+): Promise<void> {
+  await uazapiFetch<unknown>({
+    host,
+    path: '/chat/labels',
+    auth: { kind: 'token', value: token },
+    body: args,
   });
 }
 

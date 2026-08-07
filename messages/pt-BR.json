@@ -147,6 +147,12 @@
       "company": "Empresa",
       "allCompanies": "Todas as empresas",
       "clearAll": "Limpar tudo",
+      "markUnread": "Marcar como não lida",
+      "pin": "Fixar conversa",
+      "unpin": "Desafixar conversa",
+      "pinned": "Fixada",
+      "pinLimitReached": "Você só pode fixar até 3 conversas",
+      "pinFailed": "Não foi possível fixar a conversa",
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "unknown": "Desconhecido"
@@ -157,6 +163,8 @@
       "showContactPanel": "Mostrar painel de contato",
       "hideContact": "Ocultar contato",
       "showContact": "Mostrar contato",
+      "onlineNow": "Online agora",
+      "lastSeenAt": "Visto por último às {time}",
       "refresh": "Atualizar",
       "refreshConversation": "Atualizar conversa",
       "status": "Status",
@@ -173,7 +181,15 @@
       "selectConversation": "Selecione uma conversa",
       "selectConversationHint": "Escolha uma conversa à esquerda para começar a conversar",
       "today": "Hoje",
-      "yesterday": "Ontem"
+      "yesterday": "Ontem",
+      "labels": "Etiquetas",
+      "loading": "Carregando…",
+      "noLabels": "Nenhuma etiqueta ainda",
+      "newLabel": "+ Nova etiqueta",
+      "newLabelPlaceholder": "Nome da etiqueta",
+      "createLabel": "Criar",
+      "labelApplyFailed": "Não foi possível atualizar a etiqueta",
+      "labelCreateFailed": "Não foi possível criar a etiqueta"
     },
     "sessionTimer": {
       "expired": "Expirado",
@@ -232,7 +248,12 @@
       "interactiveReply": "[Resposta interativa]",
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
-      "aiBadgeTitle": "Enviado automaticamente pelo assistente de IA"
+      "aiBadgeTitle": "Enviado automaticamente pelo assistente de IA",
+      "statusAt": {
+        "sent": "Enviado às {time}",
+        "delivered": "Entregue às {time}",
+        "read": "Lido às {time}"
+      }
     },
     "actions": {
       "reply": "Responder",

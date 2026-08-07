@@ -39,16 +39,61 @@ interface MessageBubbleProps {
 // uses (`isAgent ? "text-primary-foreground/70" : ...`). "read" keeps
 // a distinct hue (WhatsApp's own light-blue tick) so it still reads as
 // a different state at a glance, not just a fainter version of "sent".
-function StatusIcon({ status }: { status: Message['status'] }) {
-  switch (status) {
+// Timestamp shown on hover, matching whichever ladder step `status`
+// currently reflects — e.g. "Lido às 14:32". Falls back to no title
+// when the webhook hasn't stamped that column yet (older messages
+// sent before migration 046, or a tick still in flight).
+function statusTitle(
+  message: Message,
+  t: ReturnType<typeof useTranslations>
+): string | undefined {
+  const at =
+    message.status === 'read'
+      ? message.read_at
+      : message.status === 'delivered'
+        ? message.delivered_at
+        : message.status === 'sent'
+          ? message.sent_at
+          : undefined;
+  if (!at) return undefined;
+  return t(`statusAt.${message.status}`, {
+    time: format(new Date(at), 'HH:mm'),
+  });
+}
+
+function StatusIcon({
+  message,
+  t,
+}: {
+  message: Message;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const title = statusTitle(message, t);
+  switch (message.status) {
     case 'sending':
-      return <Clock className="text-primary-foreground/70 h-3 w-3" />;
+      return (
+        <span title={title}>
+          <Clock className="text-primary-foreground/70 h-3 w-3" />
+        </span>
+      );
     case 'sent':
-      return <Check className="text-primary-foreground/70 h-3 w-3" />;
+      return (
+        <span title={title}>
+          <Check className="text-primary-foreground/70 h-3 w-3" />
+        </span>
+      );
     case 'delivered':
-      return <CheckCheck className="text-primary-foreground/70 h-3 w-3" />;
+      return (
+        <span title={title}>
+          <CheckCheck className="text-primary-foreground/70 h-3 w-3" />
+        </span>
+      );
     case 'read':
-      return <CheckCheck className="h-3 w-3 text-sky-300" />;
+      return (
+        <span title={title}>
+          <CheckCheck className="h-3 w-3 text-sky-300" />
+        </span>
+      );
     case 'failed':
       return <XCircle className="h-3 w-3 text-red-300" />;
     default:
@@ -348,7 +393,7 @@ export function MessageBubble({
           >
             {time}
           </span>
-          {isAgent && <StatusIcon status={message.status} />}
+          {isAgent && <StatusIcon message={message} t={t} />}
         </div>
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (

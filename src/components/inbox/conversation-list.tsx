@@ -9,8 +9,10 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, ChevronDown, X } from 'lucide-react';
+import { Search, ChevronDown, X, Pin } from 'lucide-react';
+import { whatsappLabelColor } from '@/lib/whatsapp/label-colors';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,6 +22,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ConversationListProps {
@@ -73,6 +81,10 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  // conversation_id -> pinned_at, for this agent only (RLS on
+  // conversation_pins already scopes rows to auth.uid(), so no
+  // explicit user filter is needed here).
+  const [pinnedAt, setPinnedAt] = useState<Map<string, string>>(new Map());
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -141,6 +153,31 @@ export function ConversationList({
     };
   }, []);
 
+  // This agent's pins — same resyncToken as the conversations fetch so
+  // a reconnect/tab-refocus catches up on pins toggled elsewhere too.
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('conversation_pins')
+        .select('conversation_id, pinned_at');
+      if (!cancelled && data) {
+        setPinnedAt(
+          new Map(
+            data.map((p) => [
+              p.conversation_id as string,
+              p.pinned_at as string,
+            ])
+          )
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resyncToken]);
+
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
   // are worth offering as an inbox filter.
@@ -188,8 +225,29 @@ export function ConversationList({
       });
     }
 
+    // Pinned conversations float to the top (most-recently-pinned
+    // first), same as WhatsApp's own pin behavior; everything else
+    // keeps the last_message_at order the query already provided.
+    if (pinnedAt.size > 0) {
+      result = [...result].sort((a, b) => {
+        const pa = pinnedAt.get(a.id);
+        const pb = pinnedAt.get(b.id);
+        if (pa && pb) return pb.localeCompare(pa);
+        if (pa) return -1;
+        if (pb) return 1;
+        return 0;
+      });
+    }
+
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [
+    conversations,
+    filter,
+    search,
+    selectedTagIds,
+    selectedCompany,
+    pinnedAt,
+  ]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -217,6 +275,38 @@ export function ConversationList({
       onSelect(conv);
     },
     [onSelect]
+  );
+
+  // Optimistic: flip pinnedAt immediately so the row jumps to the top
+  // (or back into normal order) without waiting on the round trip, then
+  // roll back if the API rejects it (409 at the 3-pin cap, or any other
+  // failure).
+  const handleTogglePin = useCallback(
+    async (conversationId: string, pin: boolean) => {
+      const previous = pinnedAt;
+      const next = new Map(previous);
+      if (pin) {
+        next.set(conversationId, new Date().toISOString());
+      } else {
+        next.delete(conversationId);
+      }
+      setPinnedAt(next);
+
+      const res = await fetch(`/api/conversations/${conversationId}/pin`, {
+        method: pin ? 'POST' : 'DELETE',
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        setPinnedAt(previous);
+        if (res?.status === 409) {
+          const body = await res.json().catch(() => null);
+          toast.error(body?.error ?? t('pinLimitReached'));
+        } else {
+          toast.error(t('pinFailed'));
+        }
+      }
+    },
+    [pinnedAt, t]
   );
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
@@ -423,6 +513,8 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                isPinned={pinnedAt.has(conv.id)}
+                onTogglePin={handleTogglePin}
                 t={t}
               />
             ))}
@@ -437,6 +529,8 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  isPinned: boolean;
+  onTogglePin: (conversationId: string, pin: boolean) => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -444,6 +538,8 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  isPinned,
+  onTogglePin,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -454,6 +550,24 @@ function ConversationItem({
     onSelect(conversation);
   }, [onSelect, conversation]);
 
+  const handleTogglePinClick = useCallback(() => {
+    onTogglePin(conversation.id, !isPinned);
+  }, [onTogglePin, conversation.id, isPinned]);
+
+  // Optimistic-free on purpose: `conversations` is owned by the inbox
+  // page and kept current by its own realtime subscription, so a
+  // successful PATCH is reflected once that postgres_changes event
+  // lands — same as how an inbound message already bumps unread_count
+  // today. Errors are logged rather than surfaced inline since this is
+  // a low-stakes context-menu action, not a form submit.
+  const handleMarkUnread = useCallback(() => {
+    fetch(`/api/conversations/${conversation.id}/mark-unread`, {
+      method: 'PATCH',
+    }).catch((err) => {
+      console.error('[conversation-list] mark-unread failed:', err);
+    });
+  }, [conversation.id]);
+
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
@@ -461,64 +575,100 @@ function ConversationItem({
     : '';
 
   return (
-    <button
-      onClick={handleClick}
-      className={cn(
-        'hover:bg-muted/50 flex w-full items-start gap-3 px-3 py-3 text-left transition-colors',
-        isActive && 'border-primary bg-muted/70 border-l-2'
-      )}
-    >
-      {/* Avatar */}
-      <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium">
-        {contact?.avatar_url ? (
-          <img
-            src={contact.avatar_url}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : (
-          initials
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-foreground truncate text-sm font-medium">
-            {displayName}
-          </span>
-          <span className="text-muted-foreground shrink-0 text-[10px]">
-            {timeAgo}
-          </span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="text-muted-foreground truncate text-xs">
-            {conversation.last_message_text || t('noMessagesYet')}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
-                {conversation.unread_count}
-              </span>
-            )}
-            {/* `open` is the default status nearly every conversation
-             *  sits in, so showing its dot unconditionally made every
-             *  row (read or not) look like it had a permanent green
-             *  "unread" marker next to the real unread badge above.
-             *  Only surface the dot for a status that's actually a
-             *  deviation worth flagging (pending/closed). */}
-            {conversation.status !== 'open' && (
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  STATUS_COLORS[conversation.status]
-                )}
-                title={conversation.status}
+    <ContextMenu>
+      <ContextMenuTrigger className="contents">
+        <button
+          onClick={handleClick}
+          className={cn(
+            'hover:bg-muted/50 flex w-full items-start gap-3 px-3 py-3 text-left transition-colors',
+            isActive && 'border-primary bg-muted/70 border-l-2'
+          )}
+        >
+          {/* Avatar */}
+          <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium">
+            {contact?.avatar_url ? (
+              <img
+                src={contact.avatar_url}
+                alt={displayName}
+                className="h-10 w-10 rounded-full object-cover"
               />
+            ) : (
+              initials
             )}
           </div>
-        </div>
-      </div>
-    </button>
+
+          {/* Content */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1">
+                {isPinned && (
+                  <Pin
+                    className="text-muted-foreground h-3 w-3 shrink-0 fill-current"
+                    aria-label={t('pinned')}
+                  />
+                )}
+                <span className="text-foreground truncate text-sm font-medium">
+                  {displayName}
+                </span>
+              </span>
+              <span className="text-muted-foreground shrink-0 text-[10px]">
+                {timeAgo}
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center justify-between gap-2">
+              <p className="text-muted-foreground truncate text-xs">
+                {conversation.last_message_text || t('noMessagesYet')}
+              </p>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {conversation.unread_count > 0 && (
+                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
+                    {conversation.unread_count}
+                  </span>
+                )}
+                {/* `open` is the default status nearly every conversation
+                 *  sits in, so showing its dot unconditionally made every
+                 *  row (read or not) look like it had a permanent green
+                 *  "unread" marker next to the real unread badge above.
+                 *  Only surface the dot for a status that's actually a
+                 *  deviation worth flagging (pending/closed). */}
+                {conversation.status !== 'open' && (
+                  <span
+                    className={cn(
+                      'h-2 w-2 rounded-full',
+                      STATUS_COLORS[conversation.status]
+                    )}
+                    title={conversation.status}
+                  />
+                )}
+              </div>
+            </div>
+            {conversation.labels && conversation.labels.length > 0 && (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {conversation.labels.map((label) => (
+                  <span
+                    key={label.id}
+                    className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                    style={{
+                      backgroundColor: `${whatsappLabelColor(label.color_code)}20`,
+                      color: whatsappLabelColor(label.color_code),
+                    }}
+                  >
+                    {label.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={handleMarkUnread}>
+          {t('markUnread')}
+        </ContextMenuItem>
+        <ContextMenuItem onClick={handleTogglePinClick}>
+          {isPinned ? t('unpin') : t('pin')}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

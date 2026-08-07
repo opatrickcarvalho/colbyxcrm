@@ -40,8 +40,13 @@ export {
   instanceStatus,
   disconnectInstance,
   registerWebhook,
+  setInstancePresence,
+  listLabels,
+  editLabel,
+  setChatLabels,
   type UazapiInstance,
   type UazapiStatus,
+  type UazapiLabel,
 } from './uazapi';
 
 /**

@@ -147,6 +147,12 @@
       "company": "Company",
       "allCompanies": "All companies",
       "clearAll": "Clear all",
+      "markUnread": "Mark as unread",
+      "pin": "Pin conversation",
+      "unpin": "Unpin conversation",
+      "pinned": "Pinned",
+      "pinLimitReached": "You can only pin up to 3 conversations",
+      "pinFailed": "Couldn't pin the conversation",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
       "unknown": "Unknown"
@@ -157,6 +163,8 @@
       "showContactPanel": "Show contact panel",
       "hideContact": "Hide contact",
       "showContact": "Show contact",
+      "onlineNow": "Online now",
+      "lastSeenAt": "Last seen at {time}",
       "refresh": "Refresh",
       "refreshConversation": "Refresh conversation",
       "status": "Status",
@@ -173,7 +181,15 @@
       "selectConversation": "Select a conversation",
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "labels": "Labels",
+      "loading": "Loading…",
+      "noLabels": "No labels yet",
+      "newLabel": "+ New label",
+      "newLabelPlaceholder": "Label name",
+      "createLabel": "Create",
+      "labelApplyFailed": "Couldn't update the label",
+      "labelCreateFailed": "Couldn't create the label"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -232,7 +248,12 @@
       "interactiveReply": "[Interactive reply]",
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
-      "aiBadgeTitle": "Sent automatically by the AI assistant"
+      "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "statusAt": {
+        "sent": "Sent at {time}",
+        "delivered": "Delivered at {time}",
+        "read": "Read at {time}"
+      }
     },
     "actions": {
       "reply": "Reply",

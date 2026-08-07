@@ -342,18 +342,36 @@ async function handleStatusUpdate(status: {
   timestamp: string;
   recipient_id: string;
 }) {
-  // 1) Mirror onto messages (legacy behavior) — Meta's status values
-  //    already match the CHECK constraint on messages.status. No
-  //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
-  //    repeat across numbers), so this updates 0..N rows and must not
-  //    assume a single row.
-  const { error: msgErr } = await supabaseAdmin()
+  // 1) Mirror onto messages, timestamped and ladder-guarded per row —
+  //    message_id is NOT unique (migration 009 — Meta ids repeat
+  //    across numbers), so this can touch 0..N rows. The per-row
+  //    fetch (vs. the old blind update) is what lets us stamp
+  //    sent_at/delivered_at/read_at (migration 046) without
+  //    regressing an already-later timestamp on a replayed webhook —
+  //    same guard the broadcast_recipients mirror below already had.
+  const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString();
+  const { data: msgRows, error: msgFetchErr } = await supabaseAdmin()
     .from('messages')
-    .update({ status: status.status })
+    .select('id, status')
     .eq('message_id', status.id);
 
-  if (msgErr) {
-    console.error('Error updating message status:', msgErr);
+  if (msgFetchErr) {
+    console.error('Error fetching messages for status update:', msgFetchErr);
+  } else {
+    for (const row of msgRows ?? []) {
+      if (!isValidStatusTransition(row.status, status.status)) continue;
+      const update: Record<string, unknown> = { status: status.status };
+      if (status.status === 'sent') update.sent_at = tsIso;
+      if (status.status === 'delivered') update.delivered_at = tsIso;
+      if (status.status === 'read') update.read_at = tsIso;
+      const { error: msgErr } = await supabaseAdmin()
+        .from('messages')
+        .update(update)
+        .eq('id', row.id);
+      if (msgErr) {
+        console.error('Error updating message status:', msgErr);
+      }
+    }
   }
 
   // Webhook fan-out for this status change happens at the END of this
@@ -364,7 +382,6 @@ async function handleStatusUpdate(status: {
   //    (added in migration 003). The aggregate trigger on
   //    broadcast_recipients re-derives the parent broadcast's
   //    sent/delivered/read/failed counts automatically.
-  const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString();
 
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')

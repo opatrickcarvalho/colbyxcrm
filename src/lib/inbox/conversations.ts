@@ -1,32 +1,42 @@
-import type { Conversation, Contact, Tag } from "@/types";
+import type { Conversation, Contact, Tag, WhatsAppLabel } from '@/types';
 
 /**
- * Conversation select that embeds the contact plus its tags, so the Inbox
- * can filter conversations by contact tag without a second round-trip.
- * `contact_tags(tags(*))` returns the join rows; {@link normalizeConversation}
- * flattens them onto `contact.tags`.
+ * Conversation select that embeds the contact plus its tags, and the
+ * conversation's own WhatsApp Business labels, so the Inbox can filter
+ * on either without a second round-trip. `contact_tags(tags(*))` and
+ * `conversation_whatsapp_labels(whatsapp_labels(*))` return join rows;
+ * {@link normalizeConversation} flattens both onto `contact.tags` /
+ * `labels`.
  */
 export const CONVERSATION_SELECT =
-  "*, contact:contacts(*, contact_tags(tags(*)))";
+  '*, contact:contacts(*, contact_tags(tags(*))), conversation_whatsapp_labels(whatsapp_labels(*))';
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
-type RawConversation = Omit<Conversation, "contact"> & {
+type RawConversation = Omit<Conversation, 'contact' | 'labels'> & {
   contact?: RawContact | null;
+  conversation_whatsapp_labels?: { whatsapp_labels: WhatsAppLabel | null }[];
 };
 
 /**
- * Flatten the embedded `contact_tags(tags(*))` join into `contact.tags`.
- * Safe to call on rows fetched with {@link CONVERSATION_SELECT}; a row with
- * no contact (e.g. a freshly-inserted conversation) passes through untouched.
+ * Flatten the embedded `contact_tags(tags(*))` and
+ * `conversation_whatsapp_labels(whatsapp_labels(*))` joins onto
+ * `contact.tags` / `labels`. Safe to call on rows fetched with
+ * {@link CONVERSATION_SELECT}; a row with no contact (e.g. a
+ * freshly-inserted conversation) passes its contact through untouched.
  */
 export function normalizeConversation(raw: RawConversation): Conversation {
-  const rawContact = raw.contact;
-  if (!rawContact) return raw as Conversation;
+  const { conversation_whatsapp_labels, contact: rawContact, ...rest } = raw;
+  const labels = (conversation_whatsapp_labels ?? [])
+    .map((l) => l.whatsapp_labels)
+    .filter((l): l is WhatsAppLabel => l != null);
+
+  if (!rawContact) return { ...rest, labels } as Conversation;
 
   const { contact_tags, ...contact } = rawContact;
   return {
-    ...raw,
+    ...rest,
+    labels,
     contact: {
       ...contact,
       tags: (contact_tags ?? [])
@@ -37,7 +47,7 @@ export function normalizeConversation(raw: RawConversation): Conversation {
 }
 
 export function normalizeConversations(
-  rows: RawConversation[],
+  rows: RawConversation[]
 ): Conversation[] {
   return rows.map(normalizeConversation);
 }
@@ -56,7 +66,7 @@ export interface ContactFilters {
  */
 export function matchesContactFilters(
   conversation: Conversation,
-  { tagIds, company }: ContactFilters,
+  { tagIds, company }: ContactFilters
 ): boolean {
   if (tagIds.length > 0) {
     const contactTagIds = conversation.contact?.tags ?? [];

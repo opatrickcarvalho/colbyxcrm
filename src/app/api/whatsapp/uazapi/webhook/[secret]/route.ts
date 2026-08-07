@@ -293,19 +293,41 @@ export async function POST(
         const mappedStatus = toMessagesStatus(message.status);
         if (!providerMessageId || !mappedStatus) continue;
 
-        // 1) Mirror onto messages. No `.select()`: message_id is not
-        // unique across the table (numbers can repeat ids), so this
-        // updates 0..N rows — same shape as the Meta webhook's own
-        // handleStatusUpdate.
-        const { error: msgErr } = await db
+        // 1) Mirror onto messages, timestamped and ladder-guarded per
+        // row — message_id is not unique across the table (numbers
+        // can repeat ids), so this can touch 0..N rows, same shape as
+        // the Meta webhook's own handleStatusUpdate. The per-row fetch
+        // (vs. a blind update) is what lets us stamp sent_at/
+        // delivered_at/read_at without regressing an already-later
+        // timestamp on a re-delivered or out-of-order webhook.
+        const { data: msgRows, error: msgFetchErr } = await db
           .from('messages')
-          .update({ status: mappedStatus })
+          .select('id, status')
           .eq('message_id', providerMessageId);
-        if (msgErr) {
+        if (msgFetchErr) {
           console.error(
-            '[uazapi/webhook] messages_update: message status update failed:',
-            msgErr.message
+            '[uazapi/webhook] messages_update: message fetch failed:',
+            msgFetchErr.message
           );
+        } else {
+          const tsIso = new Date().toISOString();
+          for (const row of msgRows ?? []) {
+            if (!isValidStatusTransition(row.status, mappedStatus)) continue;
+            const update: Record<string, unknown> = { status: mappedStatus };
+            if (mappedStatus === 'sent') update.sent_at = tsIso;
+            if (mappedStatus === 'delivered') update.delivered_at = tsIso;
+            if (mappedStatus === 'read') update.read_at = tsIso;
+            const { error: msgErr } = await db
+              .from('messages')
+              .update(update)
+              .eq('id', row.id);
+            if (msgErr) {
+              console.error(
+                '[uazapi/webhook] messages_update: message status update failed:',
+                msgErr.message
+              );
+            }
+          }
         }
 
         // 2) Mirror onto broadcast_recipients, forward-only on the
@@ -373,6 +395,201 @@ export async function POST(
           err instanceof Error ? err.message : err
         );
       }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Contact online/last-seen — best-effort. uazapi's OpenAPI spec lists
+  // `presence` as a subscribable event but documents no payload shape
+  // for it, so this parses defensively (a handful of plausible field
+  // names) and silently ignores anything it doesn't recognise rather
+  // than throwing. Most numbers also hide last-seen from a non-contact
+  // at the WhatsApp privacy-settings level, so a lot of contacts will
+  // simply never populate these columns — that's expected, not a bug.
+  if (event === 'presence') {
+    try {
+      const raw = (body.data ?? {}) as Record<string, unknown>;
+      const chatId = String(
+        raw.chatid ?? raw.ChatID ?? raw.id ?? raw.from ?? raw.Sender ?? ''
+      );
+      const phone = jidToPhone(chatId);
+      const stateRaw = String(
+        raw.state ?? raw.presence ?? raw.status ?? ''
+      ).toLowerCase();
+      const presenceStatus =
+        stateRaw === 'available'
+          ? 'available'
+          : stateRaw === 'unavailable'
+            ? 'unavailable'
+            : null;
+
+      if (phone && presenceStatus) {
+        const nowIso = new Date().toISOString();
+        const update: Record<string, unknown> = {
+          presence_status: presenceStatus,
+          presence_updated_at: nowIso,
+        };
+        // Going offline is the closest thing to a "last seen" moment
+        // uazapi gives us; only that transition advances the column.
+        if (presenceStatus === 'unavailable') {
+          update.last_seen_at = nowIso;
+        }
+        const { error: presenceErr } = await db
+          .from('contacts')
+          .update(update)
+          .eq('account_id', config.account_id)
+          .eq('phone', phone);
+        if (presenceErr) {
+          console.error(
+            '[uazapi/webhook] presence: contact update failed:',
+            presenceErr.message
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[uazapi/webhook] failed to process a presence entry:',
+        err instanceof Error ? err.message : err
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // WhatsApp Business label lifecycle at the instance level (created /
+  // renamed / recolored / deleted on the phone or via the CRM's own
+  // editLabel() call). Mirrors into `whatsapp_labels` — the CRM's
+  // "conversation label" IS this table, not a parallel construct (see
+  // migration 048's doc comment).
+  if (event === 'labels') {
+    try {
+      const raw = (body.data ?? {}) as Record<string, unknown>;
+      const uazapiLabelId = String(raw.labelid ?? raw.id ?? '');
+      if (uazapiLabelId) {
+        if (raw.delete === true) {
+          const { error: delErr } = await db
+            .from('whatsapp_labels')
+            .delete()
+            .eq('account_id', config.account_id)
+            .eq('uazapi_label_id', uazapiLabelId);
+          if (delErr) {
+            console.error(
+              '[uazapi/webhook] labels: delete failed:',
+              delErr.message
+            );
+          }
+        } else {
+          const name = typeof raw.name === 'string' ? raw.name : null;
+          const color = Number(raw.color);
+          if (name && Number.isFinite(color)) {
+            const { error: upsertErr } = await db
+              .from('whatsapp_labels')
+              .upsert(
+                {
+                  account_id: config.account_id,
+                  uazapi_label_id: uazapiLabelId,
+                  name,
+                  color_code: color,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'account_id,uazapi_label_id' }
+              );
+            if (upsertErr) {
+              console.error(
+                '[uazapi/webhook] labels: upsert failed:',
+                upsertErr.message
+              );
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[uazapi/webhook] failed to process a labels entry:',
+        err instanceof Error ? err.message : err
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // A chat's label SET changed (labels applied/removed on the phone,
+  // or reconciling our own setChatLabels() call). `wa_label` is the
+  // authoritative full list for the chat, so this replaces —
+  // deliberately not a lookup-and-create: a label event on a chat this
+  // CRM has never seen a conversation for is not a reason to invent one.
+  if (event === 'chat_labels') {
+    try {
+      const raw = (body.data ?? {}) as Record<string, unknown>;
+      const chatId = String(raw.chatid ?? raw.id ?? raw.JID ?? '');
+      const phone = jidToPhone(chatId);
+      const waLabelIds = Array.isArray(raw.wa_label)
+        ? raw.wa_label.filter((v): v is string => typeof v === 'string')
+        : [];
+
+      if (phone) {
+        const { data: contact } = await db
+          .from('contacts')
+          .select('id')
+          .eq('account_id', config.account_id)
+          .eq('phone', phone)
+          .maybeSingle();
+
+        const { data: conversation } = contact
+          ? await db
+              .from('conversations')
+              .select('id')
+              .eq('contact_id', contact.id)
+              .maybeSingle()
+          : { data: null };
+
+        if (conversation) {
+          const { data: localLabels } = await db
+            .from('whatsapp_labels')
+            .select('id, uazapi_label_id')
+            .eq('account_id', config.account_id)
+            .in('uazapi_label_id', waLabelIds.length > 0 ? waLabelIds : ['']);
+
+          const targetIds = (localLabels ?? []).map((l) => l.id as string);
+
+          const { error: delErr } = await db
+            .from('conversation_whatsapp_labels')
+            .delete()
+            .eq('conversation_id', conversation.id)
+            .not(
+              'whatsapp_label_id',
+              'in',
+              `(${targetIds.length > 0 ? targetIds.join(',') : "''"})`
+            );
+          if (delErr) {
+            console.error(
+              '[uazapi/webhook] chat_labels: prune failed:',
+              delErr.message
+            );
+          }
+
+          if (targetIds.length > 0) {
+            const { error: insErr } = await db
+              .from('conversation_whatsapp_labels')
+              .upsert(
+                targetIds.map((whatsapp_label_id) => ({
+                  conversation_id: conversation.id,
+                  whatsapp_label_id,
+                })),
+                { onConflict: 'conversation_id,whatsapp_label_id' }
+              );
+            if (insErr) {
+              console.error(
+                '[uazapi/webhook] chat_labels: insert failed:',
+                insErr.message
+              );
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[uazapi/webhook] failed to process a chat_labels entry:',
+        err instanceof Error ? err.message : err
+      );
     }
     return NextResponse.json({ ok: true });
   }

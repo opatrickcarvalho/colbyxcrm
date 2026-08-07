@@ -8,6 +8,7 @@ import {
   createInstance,
   isUazapiEnabled,
   registerWebhook,
+  setInstancePresence,
   uazapiHost,
   UazapiNotEnabledError,
 } from '@/lib/whatsapp/providers';
@@ -106,6 +107,19 @@ export async function POST(request: Request) {
     );
 
     const connected = await connectInstance(host, instanceToken);
+
+    // Best-effort: a fresh pairing should start "available" so
+    // messages_update (delivery/read ticks) webhooks actually arrive —
+    // see setInstancePresence's doc comment. Never block the connect
+    // flow on this.
+    try {
+      await setInstancePresence(host, instanceToken, 'available');
+    } catch (err) {
+      console.error(
+        '[uazapi/connect] failed to set instance presence available:',
+        err instanceof Error ? err.message : err
+      );
+    }
 
     const { error: upsertError } = await supabase
       .from('whatsapp_config')
