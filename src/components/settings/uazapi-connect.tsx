@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, Loader2, QrCode, RotateCcw, Unplug } from 'lucide-react';
+import {
+  CheckCircle2,
+  Loader2,
+  QrCode,
+  RefreshCw,
+  RotateCcw,
+  Unplug,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +57,7 @@ export function UazapiConnect({
   const [pairing, setPairing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [profileName, setProfileName] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Held in refs so the polling effect can clear them without listing
   // them as dependencies and restarting itself on every tick.
@@ -136,6 +144,34 @@ export function UazapiConnect({
     return clearTimers;
   }, [status, qrcode, clearTimers, onChanged]);
 
+  // Re-applies the webhook event subscription + "available" presence
+  // that connect/route.ts only sets at PAIRING time. A connection
+  // established before those two behaviors shipped never got them —
+  // symptom is delivery/read ticks stuck at "sent" and no typing
+  // indicator reaching the customer, since uazapi silently drops
+  // messages_update webhooks while the instance sits at
+  // presence=unavailable.
+  const sync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/whatsapp/uazapi/sync', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Could not sync the connection.');
+        return;
+      }
+      toast.success(
+        'Connection synced — read receipts and typing should catch up shortly.'
+      );
+    } catch {
+      toast.error('Could not reach the server to sync.');
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   const disconnect = useCallback(async () => {
     setDisconnecting(true);
     try {
@@ -183,18 +219,37 @@ export function UazapiConnect({
               stays hidden while this provider is active.
             </AlertDescription>
           </Alert>
-          <Button
-            variant="outline"
-            onClick={disconnect}
-            disabled={disconnecting}
-          >
-            {disconnecting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Unplug className="mr-2 h-4 w-4" />
-            )}
-            Disconnect
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void sync()}
+              disabled={syncing}
+            >
+              {syncing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Sync connection
+            </Button>
+            <Button
+              variant="outline"
+              onClick={disconnect}
+              disabled={disconnecting}
+            >
+              {disconnecting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Unplug className="mr-2 h-4 w-4" />
+              )}
+              Disconnect
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            If read receipts, delivery ticks, or the typing indicator stop
+            updating, click &quot;Sync connection&quot; — no need to re-scan the
+            QR code.
+          </p>
         </CardContent>
       </Card>
     );
