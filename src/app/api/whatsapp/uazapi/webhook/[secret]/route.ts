@@ -47,6 +47,15 @@ interface UazapiMessage {
   chatid?: string;
   sender?: string;
   senderName?: string;
+  /**
+   * uazapi's resolved phone-number JID for the sender, present when the
+   * chat is LID-addressed (`sender`/`chatid` come back as `…@lid`).
+   * Only identifies the remote party on an INBOUND message — on
+   * `fromMe` it is the connected number itself.
+   */
+  sender_pn?: string;
+  /** The original `…@lid` sender address, when uazapi resolved one. */
+  sender_lid?: string;
   isGroup?: boolean;
   fromMe?: boolean;
   messageType?: string;
@@ -95,15 +104,40 @@ function toMessagesStatus(status: string | undefined): string | null {
 }
 
 /**
- * uazapi identifies people by JID (`5511999999999@s.whatsapp.net`).
+ * uazapi identifies people by JID, and two address families exist that
+ * are NOT interchangeable:
+ *
+ *   `5511999999999@s.whatsapp.net` (or `@c.us`) — a real phone number
+ *      (a "PN"). This is what the CRM stores and sends to.
+ *   `221234567890123@lid` — WhatsApp's newer opaque "linked id". Its
+ *      digits are NOT a phone number and belong to nobody.
+ *
+ * The domain check is load-bearing. Without it (splitting on `@` and
+ * ignoring the domain, as this did before) a LID's digits sail through
+ * the 7-15 digit test and become a plausible-looking `+221234...`
+ * phone — which mints a phantom contact and a second conversation for
+ * someone who already exists under their real number. That is the
+ * duplicate thread that appears on send.
+ *
  * Everything downstream — contact matching, the send path — works in
  * E.164, so strip the domain and restore the leading `+`.
  */
 function jidToPhone(jid: string | undefined): string | null {
   if (!jid) return null;
-  const local = jid.split('@')[0]?.split(':')[0];
-  if (!local || !/^\d{7,15}$/.test(local)) return null;
-  return `+${local}`;
+  const [local, domain] = jid.split('@');
+  // A bare number (no domain at all) is still accepted — some payloads
+  // carry one — but any explicit non-PN domain (@lid, @g.us,
+  // @newsletter, @broadcast) is refused outright.
+  if (
+    domain !== undefined &&
+    domain !== 's.whatsapp.net' &&
+    domain !== 'c.us'
+  ) {
+    return null;
+  }
+  const digits = local?.split(':')[0];
+  if (!digits || !/^\d{7,15}$/.test(digits)) return null;
+  return `+${digits}`;
 }
 
 /**
@@ -808,9 +842,23 @@ export async function POST(
 
       // In 1-on-1 chats, chatid is always the remote contact's JID.
       // UAZAPI sometimes populates `sender` with the instance's own JID on inbound messages.
-      const phone = jidToPhone(message.chatid ?? message.sender);
+      //
+      // When the chat is LID-addressed, neither yields a phone (see
+      // jidToPhone) — fall back to uazapi's own resolved PN. That field
+      // identifies the OTHER party only on an inbound message; on a
+      // `fromMe` event it is our own number, which would file the
+      // message under a "contact" that is really the operator.
+      const phone =
+        jidToPhone(message.chatid ?? message.sender) ??
+        (message.fromMe ? null : jidToPhone(message.sender_pn));
       if (!phone) {
-        console.warn('[uazapi/webhook] skipping message with unusable sender');
+        // Deliberately skipped rather than resolved to the LID's digits:
+        // a phantom contact corrupts the inbox far worse than a dropped
+        // message, and it is silent — this at least leaves a trace.
+        console.warn(
+          '[uazapi/webhook] skipping message with no resolvable phone number (LID-only chat?):',
+          message.chatid ?? message.sender
+        );
         continue;
       }
 

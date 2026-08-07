@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { registerWebhook, setInstancePresence } from '@/lib/whatsapp/providers';
+import {
+  getInstancePrivacy,
+  registerWebhook,
+  setInstancePresence,
+  setInstancePrivacy,
+} from '@/lib/whatsapp/providers';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 
 /**
@@ -25,6 +30,16 @@ import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 export async function POST(request: Request) {
   try {
     const { supabase, accountId } = await requireRole('admin');
+
+    // `{ enable_read_receipts: true }` opts into flipping the paired
+    // account's `readreceipts` privacy setting to "all". Deliberately
+    // opt-in: WhatsApp read receipts are reciprocal, so turning them on
+    // also means this number starts sending blue ticks to everyone it
+    // talks to — a change to the operator's own WhatsApp behaviour that
+    // must never happen as a side effect of a "sync" button.
+    const body = (await request.json().catch(() => null)) as {
+      enable_read_receipts?: boolean;
+    } | null;
 
     const { data: config } = await supabase
       .from('whatsapp_config')
@@ -58,7 +73,24 @@ export async function POST(request: Request) {
     );
     await setInstancePresence(host, token, 'available');
 
-    return NextResponse.json({ ok: true });
+    // Diagnose (and only on explicit request, fix) the reciprocal
+    // read-receipt setting — the usual reason ticks sit at "delivered"
+    // forever while delivery itself works fine.
+    let readReceipts: string | undefined;
+    try {
+      if (body?.enable_read_receipts) {
+        await setInstancePrivacy(host, token, { readreceipts: 'all' });
+      }
+      readReceipts = (await getInstancePrivacy(host, token)).readreceipts;
+    } catch (err) {
+      // Privacy is a diagnostic extra; never fail the sync over it.
+      console.error(
+        '[uazapi/sync] could not read privacy settings:',
+        err instanceof Error ? err.message : err
+      );
+    }
+
+    return NextResponse.json({ ok: true, readReceipts: readReceipts ?? null });
   } catch (error) {
     console.error('[uazapi/sync] failed:', error);
     return toErrorResponse(error);

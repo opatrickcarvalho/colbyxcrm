@@ -58,6 +58,9 @@ export function UazapiConnect({
   const [disconnecting, setDisconnecting] = useState(false);
   const [profileName, setProfileName] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // 'all' | 'none' | null (unknown / not checked yet), straight from
+  // the paired account's WhatsApp privacy settings.
+  const [readReceipts, setReadReceipts] = useState<string | null>(null);
 
   // Held in refs so the polling effect can clear them without listing
   // them as dependencies and restarting itself on every tick.
@@ -151,20 +154,28 @@ export function UazapiConnect({
   // indicator reaching the customer, since uazapi silently drops
   // messages_update webhooks while the instance sits at
   // presence=unavailable.
-  const sync = useCallback(async () => {
+  const sync = useCallback(async (enableReadReceipts = false) => {
     setSyncing(true);
     try {
       const res = await fetch('/api/whatsapp/uazapi/sync', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enable_read_receipts: enableReadReceipts }),
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? 'Could not sync the connection.');
         return;
       }
-      toast.success(
-        'Connection synced — read receipts and typing should catch up shortly.'
-      );
+      setReadReceipts(data.readReceipts ?? null);
+      if (data.readReceipts === 'none') {
+        toast.warning(
+          'Synced, but this WhatsApp account has read receipts turned off — blue ticks cannot arrive until that changes.',
+          { duration: 8000 }
+        );
+      } else {
+        toast.success('Connection synced.');
+      }
     } catch {
       toast.error('Could not reach the server to sync.');
     } finally {
@@ -219,6 +230,32 @@ export function UazapiConnect({
               stays hidden while this provider is active.
             </AlertDescription>
           </Alert>
+          {readReceipts === 'none' && (
+            <Alert>
+              <AlertTitle>Read receipts are off on this number</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>
+                  WhatsApp read receipts are reciprocal: while this account has
+                  them disabled it neither sends blue ticks nor receives them,
+                  so messages sent from the inbox stay on two grey ticks no
+                  matter what. Delivery ticks are unaffected.
+                </p>
+                <p>
+                  Turning this on also means this number starts sending read
+                  receipts to everyone it chats with — including from the phone
+                  itself.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void sync(true)}
+                  disabled={syncing}
+                >
+                  Turn on read receipts
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -246,9 +283,9 @@ export function UazapiConnect({
             </Button>
           </div>
           <p className="text-muted-foreground text-xs">
-            If read receipts, delivery ticks, or the typing indicator stop
-            updating, click &quot;Sync connection&quot; — no need to re-scan the
-            QR code.
+            &quot;Sync connection&quot; re-registers the webhook, marks the
+            number as available, and reports whether read receipts are enabled —
+            no need to re-scan the QR code.
           </p>
         </CardContent>
       </Card>

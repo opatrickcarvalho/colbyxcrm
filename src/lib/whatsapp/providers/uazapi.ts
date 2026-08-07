@@ -287,6 +287,11 @@ export async function registerWebhook(
         'labels',
         'chat_labels',
       ],
+      // Suppresses the echo of our own API sends on the `messages`
+      // event. Verified NOT to affect `messages_update`: production
+      // data shows delivery ticks arriving normally (590 of 641
+      // outbound messages reached `delivered`) with this filter in
+      // place, so it does not gate the tick pipeline.
       excludeMessages: ['wasSentByApi'],
       addUrlEvents: false,
       addUrlTypesMessages: false,
@@ -314,6 +319,77 @@ export async function setInstancePresence(
     path: '/instance/presence',
     auth: { kind: 'token', value: token },
     body: { presence },
+  });
+}
+
+/**
+ * The connected account's own WhatsApp privacy settings.
+ *
+ * `readreceipts` is the one that matters for the inbox: WhatsApp's
+ * read receipts are RECIPROCAL. With it set to `none` the account
+ * neither sends blue ticks nor RECEIVES them, so every outbound
+ * message stalls at `delivered` forever no matter how healthy the
+ * webhook pipeline is. It is a setting on the paired WhatsApp
+ * account, not something the CRM can infer from message traffic —
+ * hence reading it explicitly.
+ */
+export interface UazapiPrivacy {
+  readreceipts?: string;
+  online?: string;
+  last?: string;
+  profile?: string;
+  status?: string;
+  groupadd?: string;
+  calladd?: string;
+}
+
+export async function getInstancePrivacy(
+  host: string,
+  token: string
+): Promise<UazapiPrivacy> {
+  const raw = await uazapiFetch<unknown>({
+    host,
+    path: '/instance/privacy',
+    auth: { kind: 'token', value: token },
+    method: 'GET',
+  });
+  const root = (raw ?? {}) as Record<string, unknown>;
+  // uazapi returns the settings either at the root or nested under
+  // `privacy`/`response`, depending on the build — same envelope
+  // inconsistency readInstance/readGroup already normalise for.
+  const src = (root.privacy ?? root.response ?? root) as Record<
+    string,
+    unknown
+  >;
+  const pick = (k: string) =>
+    typeof src[k] === 'string' ? (src[k] as string) : undefined;
+  return {
+    readreceipts: pick('readreceipts'),
+    online: pick('online'),
+    last: pick('last'),
+    profile: pick('profile'),
+    status: pick('status'),
+    groupadd: pick('groupadd'),
+    calladd: pick('calladd'),
+  };
+}
+
+/**
+ * Patch one or more privacy settings. Only ever called with an
+ * explicit user action behind it — this changes how the operator's
+ * WhatsApp account behaves towards everyone they talk to, not just
+ * the CRM, so it must never be applied silently.
+ */
+export async function setInstancePrivacy(
+  host: string,
+  token: string,
+  patch: UazapiPrivacy
+): Promise<void> {
+  await uazapiFetch<unknown>({
+    host,
+    path: '/instance/privacy',
+    auth: { kind: 'token', value: token },
+    body: patch,
   });
 }
 
@@ -386,6 +462,53 @@ export async function setChatLabels(
     auth: { kind: 'token', value: token },
     body: args,
   });
+}
+
+export interface UazapiNumberCheck {
+  query: string;
+  jid?: string;
+  lid?: string;
+  isInWhatsapp: boolean;
+  verifiedName?: string;
+}
+
+/**
+ * `POST /chat/check` — ask WhatsApp for the CANONICAL address of a
+ * number before sending to it.
+ *
+ * Why this matters beyond "is this number on WhatsApp": WhatsApp keys
+ * a chat by exact JID, and several countries have two writings of the
+ * same subscriber. Brazil is the notorious one — mobile numbers gained
+ * a leading `9` (`+55 11 9xxxx-xxxx` vs the older `+55 11 xxxx-xxxx`)
+ * and both forms reach the same person, but they are DIFFERENT JIDs.
+ * Sending to the form the CRM happens to have stored, when the phone's
+ * existing thread uses the other one, makes WhatsApp open a SECOND
+ * conversation with the same person — the "same number appears twice
+ * on the phone" symptom. uazapi's check normalises the number and
+ * hands back the JID WhatsApp itself considers canonical.
+ */
+export async function checkNumber(
+  host: string,
+  token: string,
+  number: string
+): Promise<UazapiNumberCheck | null> {
+  const raw = await uazapiFetch<unknown>({
+    host,
+    path: '/chat/check',
+    auth: { kind: 'token', value: token },
+    body: { numbers: [number] },
+  });
+  const first = Array.isArray(raw) ? raw[0] : null;
+  if (!first || typeof first !== 'object') return null;
+  const row = first as Record<string, unknown>;
+  return {
+    query: String(row.query ?? number),
+    jid: typeof row.jid === 'string' ? row.jid : undefined,
+    lid: typeof row.lid === 'string' ? row.lid : undefined,
+    isInWhatsapp: row.isInWhatsapp === true,
+    verifiedName:
+      typeof row.verifiedName === 'string' ? row.verifiedName : undefined,
+  };
 }
 
 // ------------------------------------------------------------
@@ -486,12 +609,49 @@ export function createUazapiProvider(
   const { host, token } = credentials;
   const auth = { kind: 'token', value: token } as const;
 
+  // Canonical-address cache for this provider instance. `/chat/check`
+  // is one extra round trip per distinct recipient; paying it is what
+  // keeps a send from opening a duplicate WhatsApp thread when the
+  // stored number is a valid-but-non-canonical writing of the same
+  // subscriber (see checkNumber's doc comment).
+  const canonical = new Map<string, string>();
+
+  const resolveNumber = async (to: string): Promise<string> => {
+    const cached = canonical.get(to);
+    if (cached) return cached;
+    try {
+      const checked = await checkNumber(host, token, to);
+      // Only trust the result when WhatsApp actually knows the number.
+      // A `jid` here can legitimately be a `@lid` address; uazapi
+      // accepts either as `number`, and the LID is by definition the
+      // thread the recipient already has open.
+      const resolved = checked?.isInWhatsapp && checked.jid ? checked.jid : to;
+      canonical.set(to, resolved);
+      return resolved;
+    } catch (err) {
+      // Never let a failed lookup block a send — fall back to the
+      // number as given, which is exactly the previous behaviour.
+      console.error(
+        '[uazapi] number check failed, sending to the raw number:',
+        err instanceof Error ? err.message : err
+      );
+      canonical.set(to, to);
+      return to;
+    }
+  };
+
   const send = async (
     path: string,
     body: Record<string, unknown>,
     to: string
   ): Promise<ProviderSendResult> => {
-    const payload = await uazapiFetch<unknown>({ host, path, auth, body });
+    const number = await resolveNumber(to);
+    const payload = await uazapiFetch<unknown>({
+      host,
+      path,
+      auth,
+      body: { ...body, number },
+    });
     return { messageId: readSentMessageId(payload), deliveredTo: to };
   };
 
@@ -571,7 +731,11 @@ export function createUazapiProvider(
         host,
         path: '/message/react',
         auth,
-        body: { number: args.to, id: args.targetMessageId, text: args.emoji },
+        body: {
+          number: await resolveNumber(args.to),
+          id: args.targetMessageId,
+          text: args.emoji,
+        },
       });
       return { messageId: readSentMessageId(payload), deliveredTo: args.to };
     },
@@ -585,7 +749,10 @@ export function createUazapiProvider(
         host,
         path: '/message/presence',
         auth,
-        body: { number: args.to, presence: args.presence },
+        // Canonicalised like every other send: a typing indicator
+        // addressed to a non-canonical writing of the number animates
+        // in a thread the customer may not have open.
+        body: { number: await resolveNumber(args.to), presence: args.presence },
       });
     },
 
