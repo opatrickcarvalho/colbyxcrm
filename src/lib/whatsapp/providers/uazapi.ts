@@ -280,26 +280,35 @@ export const WEBHOOK_EVENTS = [
 ] as const;
 
 /**
- * `excludeMessages: ['wasSentByApi']` is not optional bookkeeping.
- * uazapi echoes messages *we* sent back through the same `messages`
- * event; without the filter every outbound message would arrive as
- * inbound moments later and duplicate itself in the conversation.
+ * Deliberately EMPTY, and that is the whole fix for the missing
+ * delivery ticks.
  *
- * Whether it ALSO suppresses `messages_update` for those same messages
- * is an open question, and the honest answer today is that we do not
- * know. A previous comment here claimed production data confirmed ticks
- * arrived normally with this filter in place ("590 of 641 outbound
- * messages reached delivered"); the database says 0 of 643 ever left
- * `sent`. That claim was wrong, and it cost a debugging cycle.
+ * This used to be `['wasSentByApi']`, to stop uazapi echoing our own API
+ * sends back on the `messages` event and duplicating them in the thread.
+ * The filter does that job — but it also drops `messages_update` for the
+ * very same messages, which is every message the inbox sends. That is
+ * why outbound messages never advanced past `sent`.
  *
- * It cannot be judged until the subscription drift above is fixed,
- * because the instances in question were never subscribed to
- * `messages_update` at all. If ticks are still missing once every
- * instance carries the current fingerprint, the next thing to try is
- * `fromMeNo` instead — the webhook already dedupes our own echoes by
- * provider message id.
+ * The evidence, since a comment here once asserted the opposite without
+ * it: after the subscription drift was repaired (fingerprint written
+ * 21:20:07), a message sent at 21:22:45 — under the corrected, complete
+ * event list — still had `delivered_at` null. The subscription was no
+ * longer the variable; this filter was.
+ *
+ * Removing it is safe now in a way it was not before, because the echo
+ * is stopped twice over further down the pipe:
+ *
+ *   1. The `messages` handler skips any `fromMe` event whose provider
+ *      message id already exists on the conversation.
+ *   2. Failing that, the unique index on (conversation_id, message_id)
+ *      from migration 037 refuses the duplicate insert outright.
+ *
+ * Do not reintroduce a filter here to solve an echo problem. Echoes are
+ * a de-duplication concern and are handled as one; a subscription filter
+ * cannot tell "echo of our send" from "delivery receipt for our send",
+ * so using one to suppress the first always costs you the second.
  */
-export const WEBHOOK_EXCLUDE_MESSAGES = ['wasSentByApi'] as const;
+export const WEBHOOK_EXCLUDE_MESSAGES = [] as const;
 
 /**
  * Stable fingerprint of the registration we intend uazapi to hold:
