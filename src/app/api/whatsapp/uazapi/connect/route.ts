@@ -11,8 +11,10 @@ import {
   setInstancePresence,
   uazapiHost,
   UazapiNotEnabledError,
+  webhookRegistrationFingerprint,
 } from '@/lib/whatsapp/providers';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
+import { webhookCallbackUrl } from '@/lib/whatsapp/uazapi-webhook-sync';
 
 /**
  * POST /api/whatsapp/uazapi/connect
@@ -99,12 +101,12 @@ export async function POST(request: Request) {
     // Dockerfile's HOSTNAME=0.0.0.0), which uazapi cannot reach at
     // all, silently breaking every inbound message.
     const origin = resolvePublicBaseUrl(request, 'uazapi/connect');
+    // Built with the same helper the reconciler uses, so the fingerprint
+    // stored below matches the one the status poll computes — otherwise
+    // every fresh pairing would re-register itself once for nothing.
+    const webhookUrl = webhookCallbackUrl(origin, webhookSecret);
 
-    await registerWebhook(
-      host,
-      instanceToken,
-      `${origin}/api/whatsapp/uazapi/webhook/${webhookSecret}`
-    );
+    await registerWebhook(host, instanceToken, webhookUrl);
 
     const connected = await connectInstance(host, instanceToken);
 
@@ -137,6 +139,10 @@ export async function POST(request: Request) {
           uazapi_instance_id: instanceId,
           uazapi_instance_token: encrypt(instanceToken),
           webhook_secret: webhookSecret,
+          // Records the registration just pushed, so the status poll's
+          // reconciler knows this instance is already current.
+          uazapi_webhook_registration:
+            webhookRegistrationFingerprint(webhookUrl),
           status: connected.status === 'connected' ? 'connected' : 'connecting',
           // Meta columns stay NULL — the conditional CHECK in migration
           // 038 is what allows that for a uazapi row.

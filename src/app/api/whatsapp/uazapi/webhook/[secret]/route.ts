@@ -73,9 +73,44 @@ interface UazapiMessage {
   mimetype?: string;
   /** Present on `messages_update` events (delivery/read ticks). */
   status?: string | number;
+  /**
+   * When WhatsApp says the message was sent. Documented as milliseconds
+   * in uazapi's OpenAPI spec, but the underlying Baileys frame carries
+   * seconds and some deployments pass it straight through — hence the
+   * magnitude sniff in {@link toCreatedAt} rather than a blind `* 1000`.
+   */
+  messageTimestamp?: number | string;
+  /** Provider id of the message this one quotes, for swipe replies. */
+  quoted?: string;
   /** Baileys format fallback */
   key?: { id?: string };
   update?: { status?: string | number };
+}
+
+/**
+ * The message's own timestamp as an ISO string, or null to let the
+ * column default to now().
+ *
+ * Storing this matters because the thread is ordered by `created_at`.
+ * Without it every message was stamped at the moment our webhook
+ * happened to process it, so a retried delivery or an out-of-order batch
+ * reordered the conversation. The Meta webhook has always stored the
+ * provider's timestamp; this path just never did.
+ */
+function toCreatedAt(raw: number | string | undefined): string | null {
+  const n = typeof raw === 'string' ? Number(raw) : raw;
+  if (!n || !Number.isFinite(n) || n <= 0) return null;
+  // Seconds-vs-milliseconds: anything below ~1e11 is a seconds epoch
+  // (1e11 ms is year 1973, 1e11 s is year 5138 — no real message lands
+  // between them), so scale those up.
+  const ms = n < 1e11 ? n * 1000 : n;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  // A timestamp far in the future is a malformed payload, not a
+  // message — better to fall back to now() than to pin a row to 2087
+  // where it would sit at the top of every thread forever.
+  if (date.getTime() > Date.now() + 24 * 60 * 60 * 1000) return null;
+  return date.toISOString();
 }
 
 /**
@@ -294,10 +329,17 @@ export async function POST(
   let body: UazapiWebhookBody;
   try {
     body = (await request.json()) as UazapiWebhookBody;
-    console.log(
-      '[uazapi/webhook] Received payload:',
-      JSON.stringify(body, null, 2)
-    );
+    // Never log the whole envelope in production: it carries customers'
+    // message text in the clear, and this fires on every event. The Meta
+    // webhook next door logs nothing of the sort. Locally the full dump
+    // is genuinely useful — uazapi's payload shapes are under-documented
+    // and this is how most of them were discovered.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        '[uazapi/webhook] Received payload:',
+        JSON.stringify(body, null, 2)
+      );
+    }
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
@@ -338,7 +380,8 @@ export async function POST(
   if (event === 'messages_update' || event === 'messages.update') {
     for (const message of messagesFrom(body)) {
       try {
-        const providerMessageId = message.messageid || message.id || message.key?.id || null;
+        const providerMessageId =
+          message.messageid || message.id || message.key?.id || null;
         const rawStatus = message.status ?? message.update?.status;
         const mappedStatus = toMessagesStatus(rawStatus);
         if (!providerMessageId || !mappedStatus) continue;
@@ -583,13 +626,27 @@ export async function POST(
           .eq('phone', phone)
           .maybeSingle();
 
-        const { data: conversation } = contact
-          ? await db
-              .from('conversations')
-              .select('id')
-              .eq('contact_id', contact.id)
-              .maybeSingle()
-          : { data: null };
+        // `maybeSingle()` would ERROR — not return null — the moment a
+        // contact has two conversations, and the error was discarded, so
+        // the whole event vanished with no log. A contact can genuinely
+        // have more than one row here (an archived thread plus a live
+        // one), so take the most recent and move on.
+        let conversation: { id: string } | null = null;
+        if (contact) {
+          const { data: rows, error: convErr } = await db
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contact.id)
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(1);
+          if (convErr) {
+            console.error(
+              '[uazapi/webhook] chat_labels: conversation lookup failed:',
+              convErr.message
+            );
+          }
+          conversation = rows?.[0] ?? null;
+        }
 
         if (conversation) {
           const { data: localLabels } = await db
@@ -600,15 +657,18 @@ export async function POST(
 
           const targetIds = (localLabels ?? []).map((l) => l.id as string);
 
-          const { error: delErr } = await db
+          // `wa_label` is the authoritative full set for the chat, so
+          // anything not in it is pruned. Built with the array overload
+          // rather than by pasting ids into a PostgREST filter string —
+          // the hand-rolled `("''")` sentinel for the empty case was one
+          // quoting rule away from silently matching nothing.
+          const prune = db
             .from('conversation_whatsapp_labels')
             .delete()
-            .eq('conversation_id', conversation.id)
-            .not(
-              'whatsapp_label_id',
-              'in',
-              `(${targetIds.length > 0 ? targetIds.join(',') : "''"})`
-            );
+            .eq('conversation_id', conversation.id);
+          const { error: delErr } = await (targetIds.length > 0
+            ? prune.not('whatsapp_label_id', 'in', `(${targetIds.join(',')})`)
+            : prune);
           if (delErr) {
             console.error(
               '[uazapi/webhook] chat_labels: prune failed:',
@@ -1051,6 +1111,24 @@ export async function POST(
         }
       }
 
+      // Swipe-reply context. Same treatment as the Meta path: the quote
+      // is resolved to OUR row id, scoped to this conversation so a
+      // quoted id from elsewhere cannot link across threads. A parent we
+      // never stored is fine — the message renders without the quote
+      // rather than being dropped.
+      let replyToInternalId: string | null = null;
+      if (message.quoted) {
+        const { data: parent } = await db
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('message_id', message.quoted)
+          .maybeSingle();
+        replyToInternalId = parent?.id ?? null;
+      }
+
+      const createdAt = toCreatedAt(message.messageTimestamp);
+
       const { error: insertError } = await db.from('messages').insert({
         conversation_id: conversationId,
         sender_type: message.fromMe ? 'agent' : 'customer',
@@ -1060,6 +1138,9 @@ export async function POST(
         message_id: providerMessageId,
         status: message.fromMe ? 'sent' : 'delivered',
         interactive_reply_id: interactiveReplyId,
+        reply_to_message_id: replyToInternalId,
+        // Omitted entirely when unparseable, so the column default wins.
+        ...(createdAt ? { created_at: createdAt } : {}),
       });
 
       if (insertError) {
@@ -1070,22 +1151,32 @@ export async function POST(
         continue;
       }
 
+      // The conversation summary advances in BOTH directions — a message
+      // sent from the operator's phone is still the last thing said.
+      //
+      // The unread bump does not. It is only correct for a message from
+      // the customer. The Meta webhook can increment unconditionally
+      // because Meta never echoes our own sends back; uazapi does, so
+      // copying that shape here meant every message sent from the phone
+      // marked its own conversation unread. That is the false unread dot
+      // — it was treated in the UI once, but this is where it came from.
       const preview = text || `[${contentType}]`;
-      const { data: current } = await db
-        .from('conversations')
-        .select('unread_count')
-        .eq('id', conversationId)
-        .maybeSingle();
+      const summary: Record<string, unknown> = {
+        last_message_text: preview,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-      await db
-        .from('conversations')
-        .update({
-          last_message_text: preview,
-          last_message_at: new Date().toISOString(),
-          unread_count: (current?.unread_count ?? 0) + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', conversationId);
+      if (!message.fromMe) {
+        const { data: current } = await db
+          .from('conversations')
+          .select('unread_count')
+          .eq('id', conversationId)
+          .maybeSingle();
+        summary.unread_count = (current?.unread_count ?? 0) + 1;
+      }
+
+      await db.from('conversations').update(summary).eq('id', conversationId);
 
       // The half that makes this a CRM rather than a message log:
       // Flows, automations, AI auto-reply, broadcast reply tracking and

@@ -177,7 +177,15 @@ export interface Conversation {
   unread_count: number;
   created_at: string;
   updated_at: string;
-  contact?: Contact;
+  /**
+   * Hydrated by queries that embed `contact:contacts(*)`. Explicitly
+   * nullable, not merely optional: PostgREST returns `"contact": null`
+   * for a conversation whose contact row is gone, so `null` is a value
+   * this genuinely takes at runtime. The type admitted only `undefined`,
+   * which is why normalizing a contactless row to `null` — the thing
+   * normalizeConversation's own test asserts — did not typecheck.
+   */
+  contact?: Contact | null;
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took

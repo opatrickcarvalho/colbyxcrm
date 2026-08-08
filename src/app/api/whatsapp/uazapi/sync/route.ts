@@ -4,11 +4,15 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   getInstancePrivacy,
+  missingWebhookEvents,
+  readWebhooks,
   registerWebhook,
   setInstancePresence,
   setInstancePrivacy,
+  webhookRegistrationFingerprint,
 } from '@/lib/whatsapp/providers';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
+import { webhookCallbackUrl } from '@/lib/whatsapp/uazapi-webhook-sync';
 
 /**
  * POST /api/whatsapp/uazapi/sync
@@ -44,7 +48,7 @@ export async function POST(request: Request) {
     const { data: config } = await supabase
       .from('whatsapp_config')
       .select(
-        'id, provider, uazapi_host, uazapi_instance_token, webhook_secret'
+        'id, provider, uazapi_host, uazapi_instance_token, webhook_secret, uazapi_webhook_registration'
       )
       .eq('account_id', accountId)
       .maybeSingle();
@@ -66,12 +70,44 @@ export async function POST(request: Request) {
     const token = decrypt(config.uazapi_instance_token as string);
     const origin = resolvePublicBaseUrl(request, 'uazapi/sync');
 
-    await registerWebhook(
-      host,
-      token,
-      `${origin}/api/whatsapp/uazapi/webhook/${config.webhook_secret}`
+    const webhookUrl = webhookCallbackUrl(
+      origin,
+      config.webhook_secret as string
     );
+    await registerWebhook(host, token, webhookUrl);
+    // Record what we just pushed so the status poll's reconciler agrees
+    // this instance is current instead of pushing it a second time.
+    await supabase
+      .from('whatsapp_config')
+      .update({
+        uazapi_webhook_registration: webhookRegistrationFingerprint(webhookUrl),
+      })
+      .eq('id', config.id);
     await setInstancePresence(host, token, 'available');
+
+    // Read the subscription back rather than trusting the write. This is
+    // the diagnostic that was missing when delivery ticks stopped: the
+    // registration is remote state, and "we called registerWebhook" is
+    // not evidence that uazapi is subscribed to what we think it is.
+    // Anything listed here explains a handler that never fires.
+    let webhookEventsMissing: string[] = [];
+    try {
+      webhookEventsMissing = missingWebhookEvents(
+        await readWebhooks(host, token),
+        webhookUrl
+      );
+      if (webhookEventsMissing.length > 0) {
+        console.warn(
+          '[uazapi/sync] uazapi is not subscribed to:',
+          webhookEventsMissing.join(', ')
+        );
+      }
+    } catch (err) {
+      console.error(
+        '[uazapi/sync] could not read back the webhook registration:',
+        err instanceof Error ? err.message : err
+      );
+    }
 
     // Diagnose (and only on explicit request, fix) the reciprocal
     // read-receipt setting — the usual reason ticks sit at "delivered"
@@ -90,7 +126,16 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, readReceipts: readReceipts ?? null });
+    return NextResponse.json({
+      ok: true,
+      readReceipts: readReceipts ?? null,
+      /**
+       * Subscribed events we expect but uazapi does not report holding.
+       * Empty is the healthy case; non-empty names exactly which webhook
+       * handlers will stay silent.
+       */
+      webhook_events_missing: webhookEventsMissing,
+    });
   } catch (error) {
     console.error('[uazapi/sync] failed:', error);
     return toErrorResponse(error);

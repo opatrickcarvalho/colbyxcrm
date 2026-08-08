@@ -32,6 +32,8 @@
 // asked for.
 // ============================================================
 
+import { createHash } from 'node:crypto';
+
 import type { InteractiveListSection } from '@/lib/whatsapp/meta-api';
 import { UAZAPI_CAPABILITIES } from './capabilities';
 import {
@@ -251,17 +253,123 @@ export async function disconnectInstance(
 }
 
 /**
- * Point the instance's webhook at our callback URL.
+ * Events we subscribe the instance to.
  *
+ * `history` is deliberately absent: pairing replays up to seven days of
+ * chat, and importing that would create hundreds of contacts and
+ * conversations — and fire flows, automations and AI auto-replies
+ * against all of them — the instant someone scans a code.
+ *
+ * This list is versioned by {@link webhookRegistrationFingerprint}, so
+ * growing it is enough to make every already-paired instance re-register
+ * on its next status poll. That matters: this list has grown, and
+ * nothing re-sent it. Instances paired before the change kept the old
+ * subscription, and delivery ticks and presence silently never arrived.
+ */
+export const WEBHOOK_EVENTS = [
+  'messages',
+  'messages_update',
+  'connection',
+  'groups',
+  // presence: contact online/last-seen (best-effort — payload is
+  // undocumented and most numbers hide this from a non-contact
+  // anyway). labels/chat_labels: WhatsApp Business label sync.
+  'presence',
+  'labels',
+  'chat_labels',
+] as const;
+
+/**
  * `excludeMessages: ['wasSentByApi']` is not optional bookkeeping.
  * uazapi echoes messages *we* sent back through the same `messages`
  * event; without the filter every outbound message would arrive as
  * inbound moments later and duplicate itself in the conversation.
  *
- * `history` is deliberately absent from `events`: pairing replays up to
- * seven days of chat, and importing that would create hundreds of
- * contacts and conversations — and fire flows, automations and AI
- * auto-replies against all of them — the instant someone scans a code.
+ * Whether it ALSO suppresses `messages_update` for those same messages
+ * is an open question, and the honest answer today is that we do not
+ * know. A previous comment here claimed production data confirmed ticks
+ * arrived normally with this filter in place ("590 of 641 outbound
+ * messages reached delivered"); the database says 0 of 643 ever left
+ * `sent`. That claim was wrong, and it cost a debugging cycle.
+ *
+ * It cannot be judged until the subscription drift above is fixed,
+ * because the instances in question were never subscribed to
+ * `messages_update` at all. If ticks are still missing once every
+ * instance carries the current fingerprint, the next thing to try is
+ * `fromMeNo` instead — the webhook already dedupes our own echoes by
+ * provider message id.
+ */
+export const WEBHOOK_EXCLUDE_MESSAGES = ['wasSentByApi'] as const;
+
+/**
+ * Stable fingerprint of the registration we intend uazapi to hold:
+ * callback URL plus event list plus message filters.
+ *
+ * Stored on `whatsapp_config.uazapi_webhook_registration` after a
+ * successful push. Comparing the stored value to this one is what tells
+ * us an instance is running an out-of-date subscription without paying
+ * for a `GET /webhook` round trip on every status poll.
+ */
+export function webhookRegistrationFingerprint(url: string): string {
+  const canonical = JSON.stringify({
+    url,
+    events: [...WEBHOOK_EVENTS].sort(),
+    excludeMessages: [...WEBHOOK_EXCLUDE_MESSAGES].sort(),
+  });
+  return createHash('sha256').update(canonical).digest('hex').slice(0, 32);
+}
+
+/** One webhook registration as uazapi reports it back. */
+export interface UazapiWebhookRegistration {
+  id?: string;
+  enabled?: boolean;
+  url?: string;
+  events?: string[];
+  excludeMessages?: string[];
+}
+
+/**
+ * `GET /webhook` — what uazapi actually holds for this instance, as
+ * opposed to what we believe we pushed. Always an array, even for a
+ * single registration (per the OpenAPI spec).
+ *
+ * Used for operator-facing diagnosis, not for the reconcile decision:
+ * re-registering is idempotent and cheap, so the fingerprint check
+ * drives that. This is here so "why am I not getting ticks?" has a
+ * first-class answer instead of a guess.
+ */
+export async function readWebhooks(
+  host: string,
+  token: string
+): Promise<UazapiWebhookRegistration[]> {
+  const payload = await uazapiFetch<unknown>({
+    host,
+    path: '/webhook',
+    auth: { kind: 'token', value: token },
+    method: 'GET',
+  });
+  if (Array.isArray(payload)) return payload as UazapiWebhookRegistration[];
+  if (payload && typeof payload === 'object') {
+    return [payload as UazapiWebhookRegistration];
+  }
+  return [];
+}
+
+/** Events in {@link WEBHOOK_EVENTS} that `remote` is NOT subscribed to. */
+export function missingWebhookEvents(
+  remote: UazapiWebhookRegistration[],
+  url: string
+): string[] {
+  const match = remote.find((w) => w.url === url && w.enabled !== false);
+  if (!match) return [...WEBHOOK_EVENTS];
+  const subscribed = new Set(match.events ?? []);
+  return WEBHOOK_EVENTS.filter((e) => !subscribed.has(e));
+}
+
+/**
+ * Point the instance's webhook at our callback URL. Idempotent — uazapi
+ * replaces the registration for the instance wholesale, so calling this
+ * on an already-correct instance costs a round trip and changes nothing.
  */
 export async function registerWebhook(
   host: string,
@@ -275,24 +383,8 @@ export async function registerWebhook(
     body: {
       enabled: true,
       url,
-      events: [
-        'messages',
-        'messages_update',
-        'connection',
-        'groups',
-        // presence: contact online/last-seen (best-effort — payload is
-        // undocumented and most numbers hide this from a non-contact
-        // anyway). labels/chat_labels: WhatsApp Business label sync.
-        'presence',
-        'labels',
-        'chat_labels',
-      ],
-      // Suppresses the echo of our own API sends on the `messages`
-      // event. Verified NOT to affect `messages_update`: production
-      // data shows delivery ticks arriving normally (590 of 641
-      // outbound messages reached `delivered`) with this filter in
-      // place, so it does not gate the tick pipeline.
-      excludeMessages: ['wasSentByApi'],
+      events: [...WEBHOOK_EVENTS],
+      excludeMessages: [...WEBHOOK_EXCLUDE_MESSAGES],
       addUrlEvents: false,
       addUrlTypesMessages: false,
     },

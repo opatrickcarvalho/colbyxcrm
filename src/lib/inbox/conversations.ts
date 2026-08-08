@@ -31,7 +31,12 @@ export function normalizeConversation(raw: RawConversation): Conversation {
     .map((l) => l.whatsapp_labels)
     .filter((l): l is WhatsAppLabel => l != null);
 
-  if (!rawContact) return { ...rest, labels } as Conversation;
+  // `contact: null`, not an absent key. `rest` has already had `contact`
+  // destructured out of it, so returning it bare yields `undefined` —
+  // which reads the same through `?.` but fails an `=== null` check and
+  // vanishes from JSON.stringify, so the v1 API stopped emitting the
+  // field at all for a contactless conversation.
+  if (!rawContact) return { ...rest, contact: null, labels } as Conversation;
 
   const { contact_tags, ...contact } = rawContact;
   return {

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { instanceStatus } from '@/lib/whatsapp/providers';
+import { ensureWebhookRegistered } from '@/lib/whatsapp/uazapi-webhook-sync';
 
 /**
  * GET /api/whatsapp/uazapi/status
@@ -13,10 +15,15 @@ import { instanceStatus } from '@/lib/whatsapp/providers';
  * connection state straight from the database without every reader
  * having to call uazapi itself.
  *
+ * It is also where the webhook subscription heals. That is not an
+ * arbitrary home for it: this is the one endpoint that runs regularly
+ * against a live instance, and the subscription is remote state that
+ * pairing alone cannot keep current. See uazapi-webhook-sync.ts.
+ *
  * 'agent' rather than 'admin': this only reads state, and the inbox
  * needs it too.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { supabase, accountId } = await requireRole('agent');
 
@@ -60,10 +67,26 @@ export async function GET() {
         .eq('id', config.id);
     }
 
+    // Reconcile the webhook subscription once the instance is actually
+    // live. Gated on `connected` because uazapi rejects webhook writes
+    // for an instance that has not paired yet, and gated internally on a
+    // fingerprint, so the steady-state poll costs nothing extra.
+    let webhookReregistered = false;
+    if (instance.status === 'connected') {
+      const sync = await ensureWebhookRegistered(
+        supabase,
+        config,
+        resolvePublicBaseUrl(request, 'uazapi/status')
+      );
+      webhookReregistered = sync.reregistered;
+    }
+
     return NextResponse.json({
       status: instance.status,
       connected: instance.status === 'connected',
       profile_name: instance.profileName ?? null,
+      /** True when this poll repaired an out-of-date event subscription. */
+      webhook_reregistered: webhookReregistered,
     });
   } catch (error) {
     console.error('Error in uazapi status GET:', error);
