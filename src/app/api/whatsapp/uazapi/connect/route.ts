@@ -6,7 +6,9 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption';
 import {
   connectInstance,
   createInstance,
+  instanceStatus,
   isUazapiEnabled,
+  UazapiError,
   registerWebhook,
   setInstancePresence,
   uazapiHost,
@@ -82,6 +84,38 @@ export async function POST(request: Request) {
     // so a refresh does not invalidate the URL uazapi already holds.
     const webhookSecret =
       existing?.webhook_secret ?? randomBytes(32).toString('hex');
+
+    // Having credentials on file is not the same as the instance still
+    // existing. It can be deleted from uazapi's own dashboard, or reset
+    // in a way that invalidates the token, and nothing tells us — the row
+    // here keeps pointing at something that is gone.
+    //
+    // Ask before trusting it. Without this check the stale id short-
+    // circuits provisioning below, and the failure surfaces two calls
+    // later out of registerWebhook as a raw provider error, which is what
+    // "generate a new QR" was reporting. Someone pressing connect is
+    // asking to be paired; if the old instance is gone, the answer is a
+    // new one, not an error.
+    if (instanceId && instanceToken) {
+      try {
+        await instanceStatus(host, instanceToken);
+      } catch (err) {
+        // Only "gone" or "not yours" justifies re-provisioning. On a 5xx
+        // or a network blip uazapi is merely having a moment, and
+        // throwing away a live pairing would strand the real instance —
+        // permanently, since uazapi's API exposes no way to delete one.
+        const status = err instanceof UazapiError ? err.status : 0;
+        if (status === 401 || status === 403 || status === 404) {
+          console.warn(
+            `[uazapi/connect] stored instance ${instanceId} is gone (${status}); provisioning a fresh one`
+          );
+          instanceId = null;
+          instanceToken = null;
+        } else {
+          throw err;
+        }
+      }
+    }
 
     if (!instanceId || !instanceToken) {
       const created = await createInstance(
