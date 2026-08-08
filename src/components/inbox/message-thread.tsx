@@ -463,6 +463,17 @@ export function MessageThread({
       .then(({ error }) => {
         if (error) console.error('Failed to reset unread_count:', error);
       });
+
+    // Zeroing unread_count above is CRM-local bookkeeping — WhatsApp
+    // learns nothing from it. This is the call that actually sends the
+    // read receipt, i.e. turns the customer's ticks blue on their
+    // phone. Fire-and-forget: a failed receipt must never disturb
+    // reading the thread, and the route no-ops on non-UAZAPI accounts.
+    void fetch(`/api/conversations/${conversationId}/read`, {
+      method: 'POST',
+    }).catch((err) => {
+      console.error('[message-thread] read receipt failed:', err);
+    });
   }, [conversationId, hasUnread]);
 
   // Auto-scroll to bottom on new messages

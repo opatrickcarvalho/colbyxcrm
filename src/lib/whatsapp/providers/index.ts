@@ -44,6 +44,8 @@ export {
   getInstancePrivacy,
   setInstancePrivacy,
   checkNumber,
+  markMessagesRead,
+  markChatRead,
   type UazapiPrivacy,
   type UazapiNumberCheck,
   listLabels,

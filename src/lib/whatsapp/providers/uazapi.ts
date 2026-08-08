@@ -464,6 +464,52 @@ export async function setChatLabels(
   });
 }
 
+/**
+ * `POST /message/markread` — tell WhatsApp the operator has actually
+ * READ these inbound messages, which is what turns the customer's
+ * ticks blue on their phone.
+ *
+ * This is a real network action, not bookkeeping: nothing else in the
+ * app performs it. Zeroing `conversations.unread_count` when a thread
+ * is opened only clears the CRM's own badge — WhatsApp never learns
+ * anything from that, so without this call the CRM can never send a
+ * read receipt no matter what the privacy settings say.
+ *
+ * Takes provider message ids (`messages.message_id`), not local uuids.
+ */
+export async function markMessagesRead(
+  host: string,
+  token: string,
+  messageIds: string[]
+): Promise<void> {
+  if (messageIds.length === 0) return;
+  await uazapiFetch<unknown>({
+    host,
+    path: '/message/markread',
+    auth: { kind: 'token', value: token },
+    body: { id: messageIds },
+  });
+}
+
+/**
+ * `POST /chat/read` — flip a whole chat's read/unread state on
+ * WhatsApp itself, so "mark as unread" in the inbox is mirrored onto
+ * the operator's phone instead of being CRM-only.
+ */
+export async function markChatRead(
+  host: string,
+  token: string,
+  number: string,
+  read: boolean
+): Promise<void> {
+  await uazapiFetch<unknown>({
+    host,
+    path: '/chat/read',
+    auth: { kind: 'token', value: token },
+    body: { number, read },
+  });
+}
+
 export interface UazapiNumberCheck {
   query: string;
   jid?: string;

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import {
+  LabelsNotAvailableError,
+  resolveConversationPhone,
+  resolveLabelCredentials,
+} from '@/lib/whatsapp/label-write';
+import { markChatRead } from '@/lib/whatsapp/providers';
 
 /**
  * PATCH /api/conversations/[id]/mark-unread
@@ -51,6 +57,31 @@ export async function PATCH(
         return NextResponse.json(
           { error: updateError.message },
           { status: 500 }
+        );
+      }
+    }
+
+    // Mirror onto WhatsApp so the chat comes back unread on the
+    // operator's phone too, instead of the green dot being a CRM-only
+    // fiction. Best-effort: the local flag is the source of truth for
+    // the inbox, so a provider failure must not fail the request.
+    try {
+      const phone = await resolveConversationPhone(
+        ctx.supabase,
+        conversationId
+      );
+      if (phone) {
+        const { host, token } = await resolveLabelCredentials(
+          ctx.supabase,
+          ctx.accountId
+        );
+        await markChatRead(host, token, phone, false);
+      }
+    } catch (err) {
+      if (!(err instanceof LabelsNotAvailableError)) {
+        console.error(
+          '[mark-unread] could not mirror to WhatsApp:',
+          err instanceof Error ? err.message : err
         );
       }
     }
