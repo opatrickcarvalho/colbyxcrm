@@ -680,7 +680,7 @@ async function processMessage(
       },
       { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
     )
-    .select('id')
+    .select('id');
 
   if (msgError) {
     console.error('Error inserting message:', msgError);
@@ -695,8 +695,8 @@ async function processMessage(
     console.info(
       '[webhook] duplicate inbound message ignored (idempotent replay):',
       message.id
-    )
-    return
+    );
+    return;
   }
 
   // Update conversation. The unread bump is done DB-side (migration 037's
@@ -712,7 +712,7 @@ async function processMessage(
       p_conversation_id: conversation.id,
       p_last_message_text: contentText || `[${message.type}]`,
     }
-  )
+  );
 
   if (convError) {
     console.error('Error updating conversation:', convError);
