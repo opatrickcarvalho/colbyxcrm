@@ -38,6 +38,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 
 /**
@@ -89,6 +90,12 @@ export interface InboundSideEffectParams {
   configOwnerUserId: string;
   contactId: string;
   conversationId: string;
+  /**
+   * The conversation's status BEFORE this message landed. Only `closed`
+   * does anything: it re-opens the thread. Optional so a caller that
+   * has not loaded the row can omit it and simply skip the re-open.
+   */
+  conversationStatus?: string | null;
   /** The backend's own message id (Meta wamid, UAZAPI messageid). */
   providerMessageId: string;
   /** As stored on `messages.content_type`. */
@@ -128,7 +135,21 @@ export async function runInboundSideEffects(
     interactiveReplyId,
     isFirstInboundMessage,
     contactWasCreated,
+    conversationStatus,
   } = params;
+
+  // A customer writing again re-opens the thread (upstream issue #409).
+  // Upstream calls this inline in the Meta webhook; it lives here instead
+  // so the UAZAPI webhook gets it too — which is what upstream's own
+  // helper doc asks for ("any future inbound path gets the same behaviour
+  // for free"). The helper no-ops on anything that is not `closed`, so
+  // the common case costs nothing.
+  if (conversationStatus !== undefined) {
+    await reopenClosedConversation(supabaseAdmin(), {
+      id: conversationId,
+      status: conversationStatus,
+    });
+  }
 
   await flagBroadcastReplyIfAny(accountId, contactId);
 

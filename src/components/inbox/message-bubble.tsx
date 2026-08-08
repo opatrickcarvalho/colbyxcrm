@@ -1,25 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { cn } from '@/lib/utils';
-import type { Message, MessageReaction } from '@/types';
+import { cn } from "@/lib/utils";
+import type { Message, MessageReaction } from "@/types";
 import {
   Clock,
   Check,
   CheckCheck,
   XCircle,
-  FileText,
   MapPin,
   LayoutTemplate,
-  ImageOff,
   CornerDownLeft,
   Sparkles,
-} from 'lucide-react';
-import { format } from 'date-fns';
-import { ReplyQuote } from './reply-quote';
-import { MessageReactions } from './message-reactions';
-import { InteractivePreview } from '@/components/interactive/interactive-preview';
-import { useTranslations } from 'next-intl';
+} from "lucide-react";
+import { format } from "date-fns";
+import { ReplyQuote } from "./reply-quote";
+import { MessageReactions } from "./message-reactions";
+import {
+  MediaAudioBubble,
+  MediaDocumentBubble,
+  MediaImageBubble,
+  MediaUnavailable,
+  MediaVideoBubble,
+} from "./message-media";
+import { InteractivePreview } from "@/components/interactive/interactive-preview";
+import { useTranslations } from "next-intl";
 
 interface MessageBubbleProps {
   message: Message;
@@ -28,6 +32,12 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /**
+   * Opens the thread's media viewer on this message. Only images and videos
+   * call it; omitted when the parent renders no viewer, in which case media
+   * stays inline and non-clickable.
+   */
+  onOpenMedia?: (messageId: string) => void;
 }
 
 // Only ever rendered on an agent (outbound) bubble — `bg-primary
@@ -101,91 +111,19 @@ function StatusIcon({
   }
 }
 
-function MediaUnavailable({
-  label,
-  t,
-}: {
-  label: string;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  return (
-    <div className="bg-muted/40 text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-xs">
-      <ImageOff className="text-muted-foreground h-4 w-4 shrink-0" />
-      <span>{t('unavailable', { label })}</span>
-    </div>
-  );
-}
-
-function MediaImage({ url, alt }: { url: string; alt: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  const loadImage = useCallback(async () => {
-    if (!url) return;
-
-    // Proxy URLs need auth fetch to create blob URL
-    if (url.startsWith('/api/whatsapp/media/')) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Failed to load media');
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        setSrc(blobUrl);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setSrc(url);
-      setLoading(false);
-    }
-  }, [url]);
-
-  useEffect(() => {
-    loadImage();
-    return () => {
-      if (src?.startsWith('blob:')) {
-        URL.revokeObjectURL(src);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadImage]);
-
-  if (error) {
-    return (
-      <div className="bg-muted flex h-40 w-60 items-center justify-center rounded-lg">
-        <ImageOff className="text-muted-foreground h-8 w-8" />
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="bg-muted flex h-40 w-60 items-center justify-center rounded-lg">
-        <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src ?? ''}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
-  );
-}
-
 function MessageContent({
   message,
   t,
+  onOpenMedia,
 }: {
   message: Message;
   t: ReturnType<typeof useTranslations>;
+  onOpenMedia?: (messageId: string) => void;
 }) {
+  // Passed to the media bubbles as a no-arg callback; `undefined` when the
+  // parent wired up no viewer, which is what makes them non-clickable.
+  const openMedia = onOpenMedia ? () => onOpenMedia(message.id) : undefined;
+
   switch (message.content_type) {
     case 'text':
       return (
@@ -198,7 +136,7 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImageBubble message={message} onOpen={openMedia} t={t} />
           ) : (
             <MediaUnavailable label={t('photo')} t={t} />
           )}
@@ -214,11 +152,7 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
-            />
+            <MediaVideoBubble message={message} onOpen={openMedia} t={t} />
           ) : (
             <MediaUnavailable label={t('video')} t={t} />
           )}
@@ -234,7 +168,7 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <MediaAudioBubble message={message} t={t} />
           ) : (
             <MediaUnavailable label={t('audio')} t={t} />
           )}
@@ -250,19 +184,7 @@ function MessageContent({
           />
         );
       }
-      return (
-        <a
-          href={message.media_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-muted/50 hover:bg-muted flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-        >
-          <FileText className="text-muted-foreground h-5 w-5 shrink-0" />
-          <span className="truncate">
-            {message.content_text || t('document')}
-          </span>
-        </a>
-      );
+      return <MediaDocumentBubble message={message} t={t} />;
 
     case 'template':
       return (
@@ -335,6 +257,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  onOpenMedia,
 }: MessageBubbleProps) {
   const t = useTranslations('Inbox.bubble');
 
@@ -361,7 +284,7 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} t={t} />
+        <MessageContent message={message} t={t} onOpenMedia={onOpenMedia} />
         <div
           className={cn(
             'mt-1 flex items-center gap-1',

@@ -253,7 +253,12 @@
         "sent": "Enviado às {time}",
         "delivered": "Entregue às {time}",
         "read": "Lido às {time}"
-      }
+      },
+      "download": "Baixar",
+      "downloadFailed": "Não foi possível baixar o anexo",
+      "viewImage": "Ver imagem",
+      "expandVideo": "Ampliar vídeo",
+      "imageAlt": "Imagem enviada"
     },
     "actions": {
       "reply": "Responder",
@@ -309,6 +314,19 @@
       "resumed": "IA retomada.",
       "updateError": "Não foi possível atualizar o assistente de IA.",
       "networkError": "Não foi possível conectar ao servidor."
+    },
+    "mediaViewer": {
+      "counter": "{index} de {total}",
+      "previous": "Anterior",
+      "next": "Próxima",
+      "zoomIn": "Ampliar para o tamanho real",
+      "zoomOut": "Ajustar à tela",
+      "openOriginal": "Abrir original",
+      "download": "Baixar",
+      "downloadFailed": "Não foi possível baixar o anexo",
+      "failed": "Este anexo não está mais disponível",
+      "imageAlt": "Imagem enviada",
+      "you": "Você"
     }
   },
   "Contacts": {
@@ -1207,7 +1225,9 @@
         "matchType": "Tipo de correspondência",
         "matchContains": "Contém",
         "matchExact": "Exato",
-        "closeConversationHint": "Define o status da conversa como \"fechada\". Não precisa de configuração."
+        "closeConversationHint": "Define o status da conversa como \"fechada\". Não precisa de configuração.",
+        "matchWord": "Apenas palavras inteiras",
+        "matchWordHint": "Quando ativado, \"oi\" não dispara em \"coisa\". Deixe desligado para corresponder a qualquer trecho do texto."
       }
     }
   },

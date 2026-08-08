@@ -1167,13 +1167,18 @@ export async function POST(
         updated_at: new Date().toISOString(),
       };
 
+      // Also the snapshot the re-open check needs: read once here rather
+      // than a second time inside the side effects. `status` is still the
+      // pre-message value — inserting a message does not change it.
+      let priorStatus: string | null = null;
       if (!message.fromMe) {
         const { data: current } = await db
           .from('conversations')
-          .select('unread_count')
+          .select('unread_count, status')
           .eq('id', conversationId)
           .maybeSingle();
         summary.unread_count = (current?.unread_count ?? 0) + 1;
+        priorStatus = (current?.status as string | null) ?? null;
       }
 
       await db.from('conversations').update(summary).eq('id', conversationId);
@@ -1190,6 +1195,7 @@ export async function POST(
           configOwnerUserId: config.user_id,
           contactId,
           conversationId,
+          conversationStatus: priorStatus,
           providerMessageId: providerMessageId ?? '',
           contentType,
           contentText: text,
