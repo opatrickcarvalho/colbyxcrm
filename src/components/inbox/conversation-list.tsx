@@ -506,7 +506,7 @@ export function ConversationList({
             </p>
           </div>
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col pb-4">
             {filtered.map((conv) => (
               <ConversationItem
                 key={conv.id}
