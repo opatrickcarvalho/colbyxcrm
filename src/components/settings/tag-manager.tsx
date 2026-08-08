@@ -71,11 +71,10 @@ export function TagManager() {
       setLoading(true);
       const { data, error } = await supabase
         .from('tags')
+        .select('*')
         // Include tags belonging to the account OR created by the current user (legacy).
         .or(`account_id.eq.${accountId},user_id.eq.${userId}`)
-        .select('*')
         .order('created_at', { ascending: true });
-
 
       if (error) throw error;
       setTags(data || []);
