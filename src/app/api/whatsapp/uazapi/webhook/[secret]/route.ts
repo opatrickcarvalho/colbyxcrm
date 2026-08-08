@@ -72,7 +72,10 @@ interface UazapiMessage {
   base64Data?: string;
   mimetype?: string;
   /** Present on `messages_update` events (delivery/read ticks). */
-  status?: string;
+  status?: string | number;
+  /** Baileys format fallback */
+  key?: { id?: string };
+  update?: { status?: string | number };
 }
 
 /**
@@ -83,20 +86,32 @@ interface UazapiMessage {
  * skip the update rather than writing an invalid enum value — the
  * exact bug fixed in the inbound-message path above.
  */
-function toMessagesStatus(status: string | undefined): string | null {
-  switch ((status || '').toLowerCase()) {
+function toMessagesStatus(status: string | number | undefined): string | null {
+  const s = String(status || '').toLowerCase();
+  switch (s) {
     case 'queued':
+    case 'pending':
+    case '1':
       return 'sending';
     case 'sent':
+    case 'server_ack':
+    case '2':
       return 'sent';
     case 'delivered':
+    case 'delivery_ack':
+    case '3':
       return 'delivered';
     case 'read':
     case 'played':
+    case 'read_ack':
+    case '4':
+    case '5':
       return 'read';
     case 'failed':
     case 'canceled':
     case 'cancelled':
+    case 'error':
+    case '0':
       return 'failed';
     default:
       return null;
@@ -320,11 +335,12 @@ export async function POST(
   // (providers/uazapi.ts) subscribes to this event; without this
   // branch it fell into the generic "ignored" bucket below and
   // messages.status never advanced past 'sent'.
-  if (event === 'messages_update') {
+  if (event === 'messages_update' || event === 'messages.update') {
     for (const message of messagesFrom(body)) {
       try {
-        const providerMessageId = message.messageid || message.id || null;
-        const mappedStatus = toMessagesStatus(message.status);
+        const providerMessageId = message.messageid || message.id || message.key?.id || null;
+        const rawStatus = message.status ?? message.update?.status;
+        const mappedStatus = toMessagesStatus(rawStatus);
         if (!providerMessageId || !mappedStatus) continue;
 
         // 1) Mirror onto messages, timestamped and ladder-guarded per
