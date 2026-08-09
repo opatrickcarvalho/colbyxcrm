@@ -234,7 +234,9 @@
       "scheduleSuccess": "Mensagem agendada.",
       "scheduleError": "Não foi possível agendar a mensagem.",
       "scheduleInvalidDate": "Escolha uma data e hora futuras.",
-      "scheduleNothingToSend": "Digite uma mensagem ou anexe uma mídia primeiro."
+      "scheduleNothingToSend": "Digite uma mensagem ou anexe uma mídia primeiro.",
+      "pasteHint": "ou cole um print com Ctrl+V",
+      "pasteUnsupported": "Só é possível colar imagens PNG, JPEG ou WebP."
     },
     "bubble": {
       "photo": "Foto",

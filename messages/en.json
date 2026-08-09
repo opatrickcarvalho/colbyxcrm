@@ -234,7 +234,9 @@
       "scheduleSuccess": "Message scheduled.",
       "scheduleError": "Couldn't schedule the message.",
       "scheduleInvalidDate": "Pick a date and time in the future.",
-      "scheduleNothingToSend": "Type a message or attach media first."
+      "scheduleNothingToSend": "Type a message or attach media first.",
+      "pasteHint": "or paste a screenshot with Ctrl+V",
+      "pasteUnsupported": "Only PNG, JPEG or WebP images can be pasted."
     },
     "bubble": {
       "photo": "Photo",
