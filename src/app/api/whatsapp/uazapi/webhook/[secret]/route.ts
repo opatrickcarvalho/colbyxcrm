@@ -272,14 +272,72 @@ function extFromMime(mime: string, contentType: string): string {
  * chat as a wall of JSON instead of the button title the customer
  * actually tapped.
  */
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
+function obj(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function extractButtonReply(
   content: string | Record<string, unknown> | undefined
 ): { id: string; title: string } | null {
-  if (!content || typeof content !== 'object') return null;
-  const title = content.selectedDisplayText;
-  if (typeof title !== 'string' || !title) return null;
-  const id = content.selectedID;
-  return { id: typeof id === 'string' && id ? id : title, title };
+  const root = obj(content);
+  if (!root) return null;
+
+  // Only the flattened `selectedDisplayText`/`selectedID` pair used to be
+  // recognised. WhatsApp has four different reply envelopes and uazapi
+  // forwards whichever one the transport produced, so a tap arriving in
+  // any of the nested forms fell through to the plain-text path — stored
+  // as a blank message with no reply id, which is what left every
+  // `interactive_reply` automation unable to match.
+  const buttons = obj(root.buttonsResponseMessage);
+  const template = obj(root.templateButtonReplyMessage);
+  const list = obj(root.listResponseMessage);
+  const interactive = obj(root.interactiveResponseMessage);
+  const singleSelect = obj(list?.singleSelectReply);
+
+  // A native-flow quick reply carries its id as a JSON *string*, e.g.
+  // `{"id":"btn_1"}`. Malformed JSON there is not worth failing the whole
+  // webhook over — fall through to the other candidates instead.
+  let nativeFlowId: string | null = null;
+  const nativeFlow = obj(
+    interactive?.nativeFlowResponseMessage ?? root.nativeFlowResponseMessage
+  );
+  const paramsJson = str(nativeFlow?.paramsJson);
+  if (paramsJson) {
+    try {
+      const parsed = obj(JSON.parse(paramsJson));
+      nativeFlowId = str(parsed?.id) ?? str(parsed?.selectedId);
+    } catch {
+      nativeFlowId = null;
+    }
+  }
+
+  const id =
+    str(root.selectedID) ??
+    str(root.selectedId) ??
+    str(root.selectedButtonId) ??
+    str(buttons?.selectedButtonId) ??
+    str(template?.selectedId) ??
+    str(singleSelect?.selectedRowId) ??
+    nativeFlowId;
+
+  const title =
+    str(root.selectedDisplayText) ??
+    str(buttons?.selectedDisplayText) ??
+    str(template?.selectedDisplayText) ??
+    str(list?.title) ??
+    str(obj(interactive?.body)?.text);
+
+  if (!id && !title) return null;
+  // Either half alone is still a usable reply: an id with no label shows
+  // the id in the thread, and a label with no id at least stops the
+  // message from arriving blank.
+  return { id: id ?? (title as string), title: title ?? (id as string) };
 }
 
 export async function POST(
@@ -1139,6 +1197,16 @@ export async function POST(
         status: message.fromMe ? 'sent' : 'delivered',
         interactive_reply_id: interactiveReplyId,
         reply_to_message_id: replyToInternalId,
+        // An inbound message that yields neither text nor a recognised
+        // button reply is, in practice, always a reply envelope this
+        // parser has not seen yet — and it arrives in the thread blank,
+        // with nothing left to diagnose it from. Keeping the raw object
+        // makes the next occurrence self-describing instead of
+        // unreproducible. Narrow on purpose: a message that parsed fine
+        // stores nothing extra.
+        ...(!message.fromMe && !buttonReply && !text && obj(message.content)
+          ? { interactive_payload: obj(message.content) }
+          : {}),
         // Omitted entirely when unparseable, so the column default wins.
         ...(createdAt ? { created_at: createdAt } : {}),
       });
