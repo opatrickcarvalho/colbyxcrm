@@ -127,7 +127,7 @@ function MessageContent({
   switch (message.content_type) {
     case 'text':
       return (
-        <p className="text-sm break-words whitespace-pre-wrap">
+        <p className="text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
           {message.content_text}
         </p>
       );
@@ -141,7 +141,7 @@ function MessageContent({
             <MediaUnavailable label={t('photo')} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
+            <p className="mt-1 text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
               {message.content_text}
             </p>
           )}
@@ -157,7 +157,7 @@ function MessageContent({
             <MediaUnavailable label={t('video')} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
+            <p className="mt-1 text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
               {message.content_text}
             </p>
           )}
@@ -194,7 +194,7 @@ function MessageContent({
             {t('template')}
           </span>
           {message.content_text && (
-            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
+            <p className="mt-1 text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
               {message.content_text}
             </p>
           )}
@@ -229,14 +229,14 @@ function MessageContent({
               <CornerDownLeft className="h-3 w-3" />
               {t('buttonReply')}
             </span>
-            <p className="text-sm break-words whitespace-pre-wrap">
+            <p className="text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
               {message.content_text || t('interactiveReply')}
             </p>
           </div>
         );
       }
       return (
-        <p className="text-sm break-words whitespace-pre-wrap">
+        <p className="text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
           {message.content_text || t('interactiveReply')}
         </p>
       );
@@ -244,7 +244,7 @@ function MessageContent({
 
     default:
       return (
-        <p className="text-sm break-words whitespace-pre-wrap">
+        <p className="text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
           {message.content_text || t('unsupported')}
         </p>
       );
@@ -268,10 +268,10 @@ export function MessageBubble({
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
   return (
-    <div className={cn('flex flex-col', isAgent ? 'items-end' : 'items-start')}>
+    <div className={cn('flex flex-col max-w-full', isAgent ? 'items-end' : 'items-start')}>
       <div
         className={cn(
-          'relative rounded-2xl px-3 py-2',
+          'relative rounded-2xl px-3 py-2 max-w-full',
           isAgent
             ? 'bg-primary text-primary-foreground rounded-br-md'
             : 'bg-muted text-foreground rounded-bl-md'
