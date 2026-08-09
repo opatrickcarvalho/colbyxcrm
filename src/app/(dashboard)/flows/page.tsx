@@ -82,6 +82,22 @@ const TEMPLATE_ICONS = {
   UserPlus,
 } as const;
 
+/**
+ * Slugs whose display copy lives in the message catalog. The templates
+ * endpoint serves `name`/`description` straight from
+ * lib/flows/templates.ts, which is English-only; for these three the
+ * localised strings win. A slug added to the catalog later, before it
+ * has translations, still renders — it falls back to the English the
+ * API gave us instead of blowing up on a missing key.
+ */
+const LOCALISED_TEMPLATE_SLUGS = ["welcome_menu", "faq_bot", "lead_capture"] as const;
+
+function isLocalisedSlug(
+  slug: string,
+): slug is (typeof LOCALISED_TEMPLATE_SLUGS)[number] {
+  return (LOCALISED_TEMPLATE_SLUGS as readonly string[]).includes(slug);
+}
+
 export default function FlowsPage() {
   const router = useRouter();
   const canCreate = useCan("send-messages");
@@ -264,6 +280,13 @@ export default function FlowsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {templates.map((template) => {
                   const Icon = TEMPLATE_ICONS[template.icon] ?? FileText;
+                  const localised = isLocalisedSlug(template.slug);
+                  const name = localised
+                    ? t(`templates.${template.slug}.name`)
+                    : template.name;
+                  const description = localised
+                    ? t(`templates.${template.slug}.description`)
+                    : template.description;
                   return (
                     <button
                       key={template.slug}
@@ -274,10 +297,10 @@ export default function FlowsPage() {
                     >
                       <Icon className="h-5 w-5 text-primary" />
                       <span className="text-sm font-semibold text-popover-foreground">
-                        {template.name}
+                        {name}
                       </span>
                       <span className="text-xs leading-relaxed text-muted-foreground">
-                        {template.description}
+                        {description}
                       </span>
                       <span className="mt-auto border-t border-border pt-2 text-[11px] text-muted-foreground">
                         {t("nodeCount", { count: template.node_count })}

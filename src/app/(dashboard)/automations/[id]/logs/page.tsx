@@ -30,6 +30,10 @@ export default function AutomationLogsPage({
   const { id } = use(params)
   const router = useRouter()
   const t = useTranslations("Automations.logs")
+  // Shared with the automations list — formatRelative() renders "5 min
+  // atrás" / "nunca" from this namespace instead of the hardcoded
+  // English it used to return.
+  const tRelative = useTranslations("Automations.relative")
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
@@ -137,7 +141,7 @@ export default function AutomationLogsPage({
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {formatRelative(log.created_at)}
+                    {formatRelative(log.created_at, tRelative)}
                   </div>
                 </button>
                 {isOpen && (

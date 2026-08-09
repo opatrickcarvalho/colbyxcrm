@@ -1134,12 +1134,37 @@
     }
   },
   "Automations": {
+    "relative": {
+      "never": "없음",
+      "justNow": "방금",
+      "minutes": "{count}분 전",
+      "hours": "{count}시간 전",
+      "days": "{count}일 전"
+    },
     "list": {
       "title": "자동화",
       "subtitle": "WhatsApp® 이벤트에 자동으로 반응하는 워크플로를 만드세요.",
       "create": "자동화 만들기",
       "retry": "다시 시도",
       "templatesTitle": "빠른 시작 템플릿",
+      "templates": {
+        "welcome_message": {
+          "name": "환영 메시지",
+          "description": "처음 연락한 고객에게 인사말로 자동 응답합니다."
+        },
+        "out_of_office": {
+          "name": "부재중 안내",
+          "description": "업무 시간 외에 자동 응답해 기다리는 고객이 없도록 합니다."
+        },
+        "lead_qualifier": {
+          "name": "리드 검증",
+          "description": "검증 질문을 던져 들어온 리드를 선별합니다."
+        },
+        "follow_up_reminder": {
+          "name": "후속 조치 알림",
+          "description": "24시간 안에 답장이 없으면 다시 한 번 알립니다."
+        }
+      },
       "emptyTitle": "아직 자동화가 없습니다",
       "emptyDesc": "위의 템플릿을 선택하거나 처음부터 새로 만드세요.",
       "runs": "실행 {count}회",
@@ -1187,6 +1212,7 @@
       "backAria": "뒤로"
     },
     "builder": {
+      "untitledName": "이름 없는 자동화",
       "steps": {
         "send_message": "메시지 보내기",
         "send_buttons": "버튼 보내기",
@@ -1364,6 +1390,20 @@
       "createTitle": "새 플로우 만들기",
       "createDesc": "템플릿에서 시작하거나 처음부터 만드세요.",
       "startTemplate": "템플릿에서 시작",
+      "templates": {
+        "welcome_menu": {
+          "name": "환영 메뉴",
+          "description": "키워드를 보낸 고객에게 인사하고, 신규인지 기존인지에 따라 알맞은 담당자에게 연결합니다."
+        },
+        "faq_bot": {
+          "name": "FAQ 봇",
+          "description": "자주 묻는 질문에 자동으로 답합니다. 고객이 목록에서 주제를 고르면 봇이 답변하고 종료합니다."
+        },
+        "lead_capture": {
+          "name": "리드 수집",
+          "description": "처음 연락한 고객에게 인사하고 이름·이메일·회사를 받은 뒤, 답변을 메모에 담아 영업팀에 넘깁니다."
+        }
+      },
       "nodeCount": "노드 {count}개",
       "startBlank": "또는 빈 상태로 시작",
       "placeholderName": "예: 환영 메뉴",

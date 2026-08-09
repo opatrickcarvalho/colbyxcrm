@@ -1,6 +1,12 @@
 import type { AutomationTriggerType } from '@/types'
 
 export interface TriggerMeta {
+  /**
+   * Fallback label for a trigger type with no translation — an older row
+   * whose type the current build no longer knows about. Localised labels
+   * live in `Automations.builder.triggers.<type>.label`, which is what
+   * the UI renders whenever the type is one it recognises.
+   */
   label: string
   /** Tailwind classes for the Badge pill on the list row. */
   pillClass: string
@@ -50,14 +56,30 @@ export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {
   )
 }
 
-export function formatRelative(iso: string | null | undefined): string {
-  if (!iso) return 'never'
+/**
+ * Translator for the `Automations.relative` namespace. Typed structurally
+ * rather than against next-intl so this module stays a plain lib — the
+ * pages that call it already hold a translator and pass it down, and
+ * nothing here needs React.
+ */
+export type RelativeTranslator = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string
+
+export function formatRelative(
+  iso: string | null | undefined,
+  t: RelativeTranslator,
+): string {
+  if (!iso) return t('never')
   const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return 'never'
+  if (Number.isNaN(then)) return t('never')
   const diffSec = Math.round((Date.now() - then) / 1000)
-  if (diffSec < 60) return 'just now'
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
-  if (diffSec < 2_592_000) return `${Math.floor(diffSec / 86400)}d ago`
+  if (diffSec < 60) return t('justNow')
+  if (diffSec < 3600) return t('minutes', { count: Math.floor(diffSec / 60) })
+  if (diffSec < 86400) return t('hours', { count: Math.floor(diffSec / 3600) })
+  if (diffSec < 2_592_000) return t('days', { count: Math.floor(diffSec / 86400) })
+  // Past a month a calendar date beats "37d ago", and toLocaleDateString
+  // already follows the viewer's locale.
   return new Date(iso).toLocaleDateString()
 }

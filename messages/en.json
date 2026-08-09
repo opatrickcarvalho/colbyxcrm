@@ -1134,12 +1134,37 @@
     }
   },
   "Automations": {
+    "relative": {
+      "never": "never",
+      "justNow": "just now",
+      "minutes": "{count}m ago",
+      "hours": "{count}h ago",
+      "days": "{count}d ago"
+    },
     "list": {
       "title": "Automations",
       "subtitle": "Build workflows that react to WhatsApp® events automatically.",
       "create": "Create Automation",
       "retry": "Retry",
       "templatesTitle": "Quick-start templates",
+      "templates": {
+        "welcome_message": {
+          "name": "Welcome Message",
+          "description": "Auto-reply to first-time contacts with a greeting."
+        },
+        "out_of_office": {
+          "name": "Out of Office",
+          "description": "Auto-reply during off-hours so nobody is left waiting."
+        },
+        "lead_qualifier": {
+          "name": "Lead Qualifier",
+          "description": "Ask qualification questions to filter inbound leads."
+        },
+        "follow_up_reminder": {
+          "name": "Follow-up Reminder",
+          "description": "Send a nudge if a contact has not replied within 24 hours."
+        }
+      },
       "emptyTitle": "No automations yet",
       "emptyDesc": "Pick a template above or create one from scratch.",
       "runs": "{count} run",
@@ -1187,6 +1212,7 @@
       "backAria": "Back"
     },
     "builder": {
+      "untitledName": "Untitled automation",
       "steps": {
         "send_message": "Send Message",
         "send_buttons": "Send Buttons",
@@ -1364,6 +1390,20 @@
       "createTitle": "Create a new flow",
       "createDesc": "Start from a template or build from scratch.",
       "startTemplate": "Start from a template",
+      "templates": {
+        "welcome_menu": {
+          "name": "Welcome menu",
+          "description": "Greet customers who type a keyword and route them to the right agent based on whether they're new or existing."
+        },
+        "faq_bot": {
+          "name": "FAQ bot",
+          "description": "Answer common questions automatically. Customer picks a topic from a list; the bot replies with the answer and ends."
+        },
+        "lead_capture": {
+          "name": "Lead capture",
+          "description": "Greet first-time inbounds, capture name + email + company, then hand off to sales with the answers in the note."
+        }
+      },
       "nodeCount": "{count} {count, plural, =1 {node} other {nodes}}",
       "startBlank": "Or start blank",
       "placeholderName": "e.g. Welcome menu",

@@ -40,7 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
+import { type TemplateSlug } from "@/lib/automations/templates"
 import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
@@ -50,6 +50,22 @@ const TEMPLATE_ORDER: TemplateSlug[] = [
   "lead_qualifier",
   "follow_up_reminder",
 ]
+
+/** Trigger types the message catalog carries a label for. */
+const KNOWN_TRIGGER_TYPES = [
+  "new_message_received",
+  "first_inbound_message",
+  "keyword_match",
+  "interactive_reply",
+  "new_contact_created",
+  "conversation_assigned",
+  "tag_added",
+  "time_based",
+] as const
+
+function isKnownTriggerType(type: string): boolean {
+  return (KNOWN_TRIGGER_TYPES as readonly string[]).includes(type)
+}
 
 const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
   welcome_message: MessageCircle,
@@ -66,6 +82,31 @@ export default function AutomationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // The catalog in lib/automations/templates.ts carries the step payloads,
+  // which are language-neutral, plus an English name/description that used
+  // to be rendered straight onto these cards. Only the display copy is
+  // localised here — spelled out per slug rather than built with a
+  // template literal so next-intl's key extraction can still see every
+  // key statically.
+  const templateCopy: Record<TemplateSlug, { name: string; description: string }> = {
+    welcome_message: {
+      name: t("templates.welcome_message.name"),
+      description: t("templates.welcome_message.description"),
+    },
+    out_of_office: {
+      name: t("templates.out_of_office.name"),
+      description: t("templates.out_of_office.description"),
+    },
+    lead_qualifier: {
+      name: t("templates.lead_qualifier.name"),
+      description: t("templates.lead_qualifier.description"),
+    },
+    follow_up_reminder: {
+      name: t("templates.follow_up_reminder.name"),
+      description: t("templates.follow_up_reminder.description"),
+    },
+  }
 
   async function load() {
     try {
@@ -183,7 +224,7 @@ export default function AutomationsPage() {
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t("templatesTitle")}</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
+              const copy = templateCopy[slug]
               const Icon = TEMPLATE_ICON[slug]
               return (
                 <button
@@ -194,8 +235,8 @@ export default function AutomationsPage() {
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold text-foreground">{t.name}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  <div className="text-sm font-semibold text-foreground">{copy.name}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{copy.description}</p>
                 </button>
               )
             })}
@@ -279,6 +320,16 @@ function AutomationCard({
   t: ReturnType<typeof useTranslations>
 }) {
   const meta = triggerMeta(automation.trigger_type)
+  // The pill's colour comes from the meta table; its wording comes from
+  // the builder's trigger catalog, which is already translated for every
+  // type the app knows. An unrecognised type (an older row, a type the
+  // build has since dropped) keeps the meta's raw label rather than
+  // throwing on a missing key.
+  const tTrigger = useTranslations("Automations.builder.triggers")
+  const tRelative = useTranslations("Automations.relative")
+  const triggerLabel = isKnownTriggerType(automation.trigger_type)
+    ? tTrigger(`${automation.trigger_type}.label`)
+    : meta.label
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
       <div className="flex items-center gap-4 p-4">
@@ -315,7 +366,7 @@ function AutomationCard({
                 meta.pillClass,
               )}
             >
-              {meta.label}
+              {triggerLabel}
             </span>
             <span className="tabular-nums">
               {automation.execution_count === 1
@@ -323,7 +374,11 @@ function AutomationCard({
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
+            <span>
+              {t("lastRun", {
+                time: formatRelative(automation.last_executed_at, tRelative),
+              })}
+            </span>
           </div>
         </button>
 
