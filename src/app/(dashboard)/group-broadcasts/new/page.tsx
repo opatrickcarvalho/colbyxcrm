@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Loader2, Paperclip, Shuffle, FileText, Save, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -19,16 +19,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { uploadAccountMedia } from '@/lib/storage/upload-media';
 import { CHAT_MEDIA_BUCKET } from '@/components/inbox/message-composer';
 import type { GroupContentType } from '@/lib/whatsapp/group-broadcast';
-
-interface GroupOption {
-  id: string;
-  name: string;
-  campaign_slug: string | null;
-  status: 'active' | 'archived';
-}
+import { renderMessage, validateSpintax, countVariants } from '@/lib/campaigns/spintax';
+import {
+  AudiencePicker,
+  EMPTY_AUDIENCE_SELECTION,
+  type AudienceSelection,
+} from '@/components/campaigns/audience-picker';
+import {
+  TemplateManagerDialog,
+  type CampaignTemplate,
+} from '@/components/campaigns/template-manager-dialog';
 
 /** Local `datetime-local` floor (now + 1 min), mirrors message-composer.tsx. */
 function minScheduleValue(): string {
@@ -39,9 +43,36 @@ function minScheduleValue(): string {
 
 const MEDIA_TYPES: GroupContentType[] = ['image', 'video', 'document', 'audio'];
 
+// ISO weekdays, 1 = Monday .. 7 = Sunday — matches window_days (052).
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+const VARIABLE_TOKENS = ['{{nome}}', '{{primeiro_nome}}', '{{telefone}}', '{{emoji}}'] as const;
+
+// Sample values for the live preview — never sent, just illustrative.
+const PREVIEW_VARS = {
+  nome: 'Maria Silva',
+  primeiro_nome: 'Maria',
+  telefone: '+55 11 99999-9999',
+};
+
 export default function NewGroupBroadcastPage() {
   const t = useTranslations('GroupBroadcasts.new');
+  const tDays = useTranslations('GroupBroadcasts.days');
   const router = useRouter();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Static key lookups (not a dynamic t() call) — keeps next-intl's
+  // static-analysis-friendly usage while still being weekday-indexed.
+  // Shared with the list/detail screens under the top-level `days` key.
+  const WEEKDAY_LABELS: Record<number, string> = {
+    1: tDays('mon'),
+    2: tDays('tue'),
+    3: tDays('wed'),
+    4: tDays('thu'),
+    5: tDays('fri'),
+    6: tDays('sat'),
+    7: tDays('sun'),
+  };
 
   const [name, setName] = useState('');
   const [contentType, setContentType] = useState<GroupContentType>('text');
@@ -50,34 +81,33 @@ export default function NewGroupBroadcastPage() {
   const [filename, setFilename] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  const [groups, setGroups] = useState<GroupOption[]>([]);
-  const [groupsLoading, setGroupsLoading] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [groupFilter, setGroupFilter] = useState('');
+  const [audience, setAudience] = useState<AudienceSelection>(EMPTY_AUDIENCE_SELECTION);
+  const [saveAudienceAs, setSaveAudienceAs] = useState('');
+
+  const [spintaxEnabled, setSpintaxEnabled] = useState(true);
+  const [invisibleChars, setInvisibleChars] = useState(false);
+  const [previewText, setPreviewText] = useState('');
+  const [shuffleNonce, setShuffleNonce] = useState(0);
+
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const [delaySeconds, setDelaySeconds] = useState('8');
+  const [delayJitterPct, setDelayJitterPct] = useState('20');
   const [scheduleAt, setScheduleAt] = useState('');
+  const [windowEnabled, setWindowEnabled] = useState(false);
+  const [windowStart, setWindowStart] = useState('09:00');
+  const [windowEnd, setWindowEnd] = useState('18:00');
+  const [windowDays, setWindowDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      try {
-        const [groupsRes, settingsRes] = await Promise.all([
-          fetch('/api/whatsapp/groups', { cache: 'no-store' }),
-          fetch('/api/whatsapp/group-broadcasts/settings', { cache: 'no-store' }),
-        ]);
-        const groupsData = await groupsRes.json().catch(() => ({}));
-        const settingsData = await settingsRes.json().catch(() => ({}));
-        if (cancelled) return;
-        setGroups(
-          (groupsData.data ?? []).filter((g: GroupOption) => g.status === 'active')
-        );
-        if (settingsData?.data?.delay_seconds) {
-          setDelaySeconds(String(settingsData.data.delay_seconds));
-        }
-      } finally {
-        if (!cancelled) setGroupsLoading(false);
+      const res = await fetch('/api/whatsapp/group-broadcasts/settings', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!cancelled && data?.data?.delay_seconds) {
+        setDelaySeconds(String(data.data.delay_seconds));
       }
     }
     void load();
@@ -86,35 +116,41 @@ export default function NewGroupBroadcastPage() {
     };
   }, []);
 
-  const filteredGroups = useMemo(() => {
-    const q = groupFilter.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter(
-      (g) =>
-        g.name.toLowerCase().includes(q) ||
-        (g.campaign_slug ?? '').toLowerCase().includes(q)
-    );
-  }, [groups, groupFilter]);
+  const spintaxCheck = useMemo(() => validateSpintax(contentText), [contentText]);
+  const variantCount = useMemo(() => countVariants(contentText), [contentText]);
 
-  function toggleGroup(id: string, checked: boolean) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
+  useEffect(() => {
+    if (!contentText.trim() || !spintaxCheck.ok) {
+      setPreviewText('');
+      return;
+    }
+    setPreviewText(renderMessage(contentText, { vars: PREVIEW_VARS, invisibleChars }));
+    // shuffleNonce is a deliberate re-render trigger to force a fresh
+    // random render on demand — it's already listed below.
+  }, [contentText, invisibleChars, spintaxCheck.ok, shuffleNonce]);
+
+  function insertVariable(token: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setContentText((prev) => prev + token);
+      return;
+    }
+    const start = el.selectionStart ?? contentText.length;
+    const end = el.selectionEnd ?? contentText.length;
+    const next = contentText.slice(0, start) + token + contentText.slice(end);
+    setContentText(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
     });
   }
 
-  function selectAllFiltered() {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const g of filteredGroups) next.add(g.id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
+  function handlePickTemplate(template: CampaignTemplate) {
+    setContentType(template.content_type);
+    setContentText(template.content_text ?? '');
+    setMediaUrl(template.media_url ?? '');
+    setFilename(template.filename ?? '');
   }
 
   async function handleFilePicked(e: ChangeEvent<HTMLInputElement>) {
@@ -133,14 +169,47 @@ export default function NewGroupBroadcastPage() {
     }
   }
 
+  function toggleWeekday(day: number) {
+    setWindowDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }
+
   const isMedia = MEDIA_TYPES.includes(contentType);
+  const hasContent =
+    contentType === 'text' ? contentText.trim().length > 0 : mediaUrl.length > 0;
+  const hasAudience =
+    audience.contactIds.length > 0 || audience.groupIds.length > 0 || audience.phones.length > 0;
+  const windowValid = !windowEnabled || (windowStart && windowEnd && windowDays.size > 0);
+  const jitterNum = Number(delayJitterPct);
+  const delayNum = Number(delaySeconds);
+
   const canSubmit =
     name.trim().length > 0 &&
-    selectedIds.size > 0 &&
-    Number(delaySeconds) >= 1 &&
-    (contentType === 'text' ? contentText.trim().length > 0 : mediaUrl.length > 0) &&
+    hasAudience &&
+    hasContent &&
+    spintaxCheck.ok &&
+    Number.isFinite(delayNum) &&
+    delayNum >= 1 &&
+    Number.isFinite(jitterNum) &&
+    jitterNum >= 0 &&
+    jitterNum <= 90 &&
+    windowValid &&
     !submitting &&
     !uploading;
+
+  // 60s ±20% → between 48s and 72s
+  const jitterRange = useMemo(() => {
+    if (!Number.isFinite(delayNum) || !Number.isFinite(jitterNum)) return null;
+    const swing = delayNum * (jitterNum / 100);
+    return {
+      min: Math.max(0, Math.round(delayNum - swing)),
+      max: Math.round(delayNum + swing),
+    };
+  }, [delayNum, jitterNum]);
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -155,9 +224,20 @@ export default function NewGroupBroadcastPage() {
           content_text: contentText.trim() || undefined,
           media_url: mediaUrl || undefined,
           filename: contentType === 'document' ? filename || undefined : undefined,
-          group_ids: Array.from(selectedIds),
-          delay_seconds: Number(delaySeconds),
+          delay_seconds: delayNum,
+          delay_jitter_pct: jitterNum,
           scheduled_at: scheduleAt || undefined,
+          window: windowEnabled
+            ? { start: windowStart, end: windowEnd, days: Array.from(windowDays).sort() }
+            : null,
+          spintax_enabled: spintaxEnabled,
+          invisible_chars: invisibleChars,
+          targets: {
+            group_ids: audience.groupIds,
+            contact_ids: audience.contactIds,
+            phones: audience.phones,
+          },
+          save_audience_as: saveAudienceAs.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -166,7 +246,7 @@ export default function NewGroupBroadcastPage() {
         return;
       }
       toast.success(t('createSuccess'));
-      router.push(`/group-broadcasts/${data.data.id}`);
+      router.push(`/group-broadcasts/${data.id}`);
     } finally {
       setSubmitting(false);
     }
@@ -180,15 +260,39 @@ export default function NewGroupBroadcastPage() {
       </div>
 
       <Card>
+        <CardContent className="space-y-2 pt-6">
+          <Label htmlFor="campaign-name">{t('nameLabel')}</Label>
+          <Input
+            id="campaign-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('namePlaceholder')}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-3 pt-6">
+          <h2 className="text-sm font-semibold text-foreground">{t('sectionAudience')}</h2>
+          <AudiencePicker
+            selection={audience}
+            onSelectionChange={setAudience}
+            saveAsName={saveAudienceAs}
+            onSaveAsNameChange={setSaveAudienceAs}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="space-y-5 pt-6">
-          <div className="space-y-2">
-            <Label htmlFor="broadcast-name">{t('nameLabel')}</Label>
-            <Input
-              id="broadcast-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('namePlaceholder')}
-            />
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">{t('sectionMessage')}</h2>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
+                <FileText className="size-3.5" />
+                {t('templates.loadButton')}
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -196,6 +300,7 @@ export default function NewGroupBroadcastPage() {
             <Select
               value={contentType}
               onValueChange={(v) => {
+                if (!v) return;
                 setContentType(v as GroupContentType);
                 setMediaUrl('');
                 setFilename('');
@@ -216,16 +321,73 @@ export default function NewGroupBroadcastPage() {
 
           {contentType !== 'audio' && (
             <div className="space-y-2">
-              <Label htmlFor="broadcast-text">
+              <Label htmlFor="campaign-text">
                 {contentType === 'text' ? t('messageLabel') : t('captionLabel')}
               </Label>
               <Textarea
-                id="broadcast-text"
+                ref={textareaRef}
+                id="campaign-text"
                 value={contentText}
                 onChange={(e) => setContentText(e.target.value)}
-                rows={4}
+                rows={5}
                 placeholder={t('messagePlaceholder')}
               />
+              <div className="flex flex-wrap gap-1.5">
+                {VARIABLE_TOKENS.map((token) => (
+                  <Button
+                    key={token}
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => insertVariable(token)}
+                  >
+                    {token}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Switch checked={spintaxEnabled} onCheckedChange={setSpintaxEnabled} />
+                  {t('composer.spintaxEnabledLabel')}
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Switch checked={invisibleChars} onCheckedChange={setInvisibleChars} />
+                  {t('composer.invisibleCharsLabel')}
+                </label>
+              </div>
+
+              {!spintaxCheck.ok && (
+                <p className="text-xs text-red-400">
+                  {t('composer.spintaxError', { error: spintaxCheck.error })}
+                </p>
+              )}
+
+              {contentText.trim().length > 0 && spintaxCheck.ok && (
+                <div className="space-y-1.5 rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('composer.previewLabel')}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">
+                        {t('composer.variantsCount', { count: variantCount })}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setShuffleNonce((n) => n + 1)}
+                        aria-label={t('composer.shuffle')}
+                        title={t('composer.shuffle')}
+                      >
+                        <Shuffle className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-foreground">{previewText}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -265,78 +427,116 @@ export default function NewGroupBroadcastPage() {
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="broadcast-delay">{t('delayLabel')}</Label>
-              <Input
-                id="broadcast-delay"
-                type="number"
-                min={1}
-                value={delaySeconds}
-                onChange={(e) => setDelaySeconds(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">{t('delayHint')}</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="broadcast-schedule">{t('scheduleLabel')}</Label>
-              <Input
-                id="broadcast-schedule"
-                type="datetime-local"
-                min={minScheduleValue()}
-                value={scheduleAt}
-                onChange={(e) => setScheduleAt(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">{t('scheduleHint')}</p>
-            </div>
+          <div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
+              <Save className="size-3.5" />
+              {t('templates.saveButton')}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="space-y-3 pt-6">
-          <div className="flex items-center justify-between gap-2">
-            <Label>{t('groupsLabel', { count: selectedIds.size })}</Label>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={selectAllFiltered} type="button">
-                {t('selectAllActive')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={clearSelection} type="button">
-                {t('clearSelection')}
-              </Button>
+        <CardContent className="space-y-5 pt-6">
+          <h2 className="text-sm font-semibold text-foreground">{t('sectionSchedule')}</h2>
+
+          <div className="space-y-2">
+            <Label htmlFor="campaign-schedule">{t('schedule.startLabel')}</Label>
+            <Input
+              id="campaign-schedule"
+              type="datetime-local"
+              min={minScheduleValue()}
+              value={scheduleAt}
+              onChange={(e) => setScheduleAt(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">{t('schedule.startHint')}</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="campaign-delay">{t('schedule.delayLabel')}</Label>
+              <Input
+                id="campaign-delay"
+                type="number"
+                min={1}
+                value={delaySeconds}
+                onChange={(e) => setDelaySeconds(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t('schedule.delayHint')}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="campaign-jitter">{t('schedule.jitterLabel')}</Label>
+              <Input
+                id="campaign-jitter"
+                type="number"
+                min={0}
+                max={90}
+                value={delayJitterPct}
+                onChange={(e) => setDelayJitterPct(e.target.value)}
+              />
+              {jitterRange && (
+                <p className="text-xs text-muted-foreground">
+                  {t('schedule.jitterHint', {
+                    seconds: delayNum,
+                    pct: jitterNum,
+                    min: jitterRange.min,
+                    max: jitterRange.max,
+                  })}
+                </p>
+              )}
             </div>
           </div>
-          <Input
-            value={groupFilter}
-            onChange={(e) => setGroupFilter(e.target.value)}
-            placeholder={t('groupFilterPlaceholder')}
-          />
-          {groupsLoading ? (
-            <div className="flex h-32 items-center justify-center">
-              <Loader2 className="size-5 animate-spin text-primary" />
-            </div>
-          ) : filteredGroups.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              {t('noGroupsFound')}
-            </p>
-          ) : (
-            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-              {filteredGroups.map((g) => (
-                <label
-                  key={g.id}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                >
-                  <Checkbox
-                    checked={selectedIds.has(g.id)}
-                    onCheckedChange={(checked) => toggleGroup(g.id, checked === true)}
-                  />
-                  <span className="text-foreground">{g.name}</span>
-                  {g.campaign_slug && (
-                    <span className="text-xs text-muted-foreground">({g.campaign_slug})</span>
+
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Switch checked={windowEnabled} onCheckedChange={setWindowEnabled} />
+              {t('schedule.windowToggle')}
+            </label>
+
+            {windowEnabled && (
+              <div className="space-y-3">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="campaign-window-start">{t('schedule.windowStartLabel')}</Label>
+                    <Input
+                      id="campaign-window-start"
+                      type="time"
+                      value={windowStart}
+                      onChange={(e) => setWindowStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="campaign-window-end">{t('schedule.windowEndLabel')}</Label>
+                    <Input
+                      id="campaign-window-end"
+                      type="time"
+                      value={windowEnd}
+                      onChange={(e) => setWindowEnd(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('schedule.windowDaysLabel')}</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {WEEKDAYS.map((day) => (
+                      <Button
+                        key={day}
+                        type="button"
+                        size="xs"
+                        variant={windowDays.has(day) ? 'default' : 'outline'}
+                        onClick={() => toggleWeekday(day)}
+                      >
+                        {WEEKDAY_LABELS[day]}
+                      </Button>
+                    ))}
+                  </div>
+                  {windowDays.size === 0 && (
+                    <p className="text-xs text-red-400">{t('schedule.windowInvalid')}</p>
                   )}
-                </label>
-              ))}
-            </div>
-          )}
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -353,6 +553,13 @@ export default function NewGroupBroadcastPage() {
           {t('submit')}
         </Button>
       </div>
+
+      <TemplateManagerDialog
+        open={templatePickerOpen}
+        onOpenChange={setTemplatePickerOpen}
+        onPick={handlePickTemplate}
+        draft={{ content_type: contentType, content_text: contentText, media_url: mediaUrl, filename }}
+      />
     </div>
   );
 }

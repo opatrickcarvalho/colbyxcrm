@@ -25,6 +25,11 @@ interface GroupBroadcastRow {
   failed_count: number;
   delay_seconds: number;
   created_at: string;
+  // Added by migration 052 — nullable when the campaign has no sending
+  // window (i.e. can send around the clock).
+  window_start?: string | null;
+  window_end?: string | null;
+  window_days?: number[] | null;
 }
 
 const STATUS_STYLES: Record<GroupBroadcastRow['status'], string> = {
@@ -35,11 +40,35 @@ const STATUS_STYLES: Record<GroupBroadcastRow['status'], string> = {
   cancelled: 'border-border bg-muted text-muted-foreground',
 };
 
+/** Compact "09:00-18:00 · Seg,Ter,Qua" summary, or a dash when unrestricted. */
+function formatWindow(
+  b: GroupBroadcastRow,
+  t: ReturnType<typeof useTranslations>,
+  dayLabels: Record<number, string>
+): string {
+  if (!b.window_start || !b.window_end) return t('windowNone');
+  const days = b.window_days?.length
+    ? b.window_days.map((d) => dayLabels[d]).join(',')
+    : t('windowAllDays');
+  return `${b.window_start.slice(0, 5)}–${b.window_end.slice(0, 5)} · ${days}`;
+}
+
 export default function GroupBroadcastsPage() {
   const t = useTranslations('GroupBroadcasts.list');
   const tStatus = useTranslations('GroupBroadcasts.status');
+  const tDays = useTranslations('GroupBroadcasts.days');
   const router = useRouter();
   const canManage = useCan('send-messages');
+
+  const dayLabels: Record<number, string> = {
+    1: tDays('mon'),
+    2: tDays('tue'),
+    3: tDays('wed'),
+    4: tDays('thu'),
+    5: tDays('fri'),
+    6: tDays('sat'),
+    7: tDays('sun'),
+  };
 
   const [broadcasts, setBroadcasts] = useState<GroupBroadcastRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +149,9 @@ export default function GroupBroadcastsPage() {
                 <TableHead className="hidden text-muted-foreground sm:table-cell">
                   {t('table.delay')}
                 </TableHead>
+                <TableHead className="hidden text-muted-foreground lg:table-cell">
+                  {t('table.window')}
+                </TableHead>
                 <TableHead className="hidden text-muted-foreground sm:table-cell">
                   {t('table.created')}
                 </TableHead>
@@ -150,6 +182,9 @@ export default function GroupBroadcastsPage() {
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
                     {b.delay_seconds}s
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">
+                    {formatWindow(b, t, dayLabels)}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
                     {new Date(b.created_at).toLocaleDateString()}

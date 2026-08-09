@@ -7,6 +7,42 @@ import {
   GroupsNotAvailableError,
 } from '@/lib/whatsapp/providers/uazapi-groups'
 import { sendGroupContent, type GroupContentType } from '@/lib/whatsapp/group-broadcast'
+import { isWithinWindow, type SendWindow } from '@/lib/campaigns/schedule'
+
+/** The campaign fields this route reads, shared by the cache and the guard. */
+interface CampaignRow {
+  account_id: string
+  content_type: string
+  content_text: string | null
+  media_url: string | null
+  filename: string | null
+  window_start: string | null
+  window_end: string | null
+  window_days: number[] | null
+  timezone: string | null
+}
+
+/**
+ * Is the campaign's sending window open right now? A campaign with no
+ * window configured is always open — `window_start`/`window_end` are
+ * NOT NULL together (migration 052 enforces the pair), so checking one
+ * would do; both are read for clarity.
+ */
+function isCampaignWindowOpen(broadcast: CampaignRow): boolean {
+  if (!broadcast.window_start || !broadcast.window_end) return true
+  const window: SendWindow = {
+    // Postgres TIME round-trips as 'HH:MM:SS'; schedule.ts's parser
+    // accepts only 'HH:MM', so the seconds are trimmed here rather than
+    // loosening a parser that guards user input elsewhere.
+    start: broadcast.window_start.slice(0, 5),
+    end: broadcast.window_end.slice(0, 5),
+    days: broadcast.window_days ?? [1, 2, 3, 4, 5, 6, 7],
+    timeZone: broadcast.timezone || 'America/Sao_Paulo',
+  }
+  return isWithinWindow(new Date(), window)
+}
+import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation'
+import { sendMessageToConversation, SendMessageError } from '@/lib/whatsapp/send-message'
 
 /**
  * Drain due `whatsapp_group_broadcast_targets` rows. Meant to be hit
@@ -19,6 +55,11 @@ import { sendGroupContent, type GroupContentType } from '@/lib/whatsapp/group-br
  * from each target's pre-staggered `send_at` (set at campaign
  * creation), not from anything in this loop — this route just drains
  * whatever is due.
+ *
+ * A target is a group, a saved contact, or a hand-typed phone number
+ * — exactly one of `group_id` / `contact_id` / `phone` is set (the
+ * XOR check in 052_campaigns.sql), and that's what decides which send
+ * path a row takes below.
  */
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET
@@ -51,7 +92,48 @@ export async function GET(request: Request) {
   let failed = 0
   const touchedBroadcastIds = new Set<string>()
 
+  // One fetch per campaign, not per target: a 50-row batch is usually
+  // 50 targets of the SAME campaign, and the window check below needs
+  // the parent row before anything is claimed.
+  const broadcastCache = new Map<string, CampaignRow | null>()
+  const loadBroadcast = async (id: string): Promise<CampaignRow | null> => {
+    if (broadcastCache.has(id)) return broadcastCache.get(id) ?? null
+    const { data } = await admin
+      .from('whatsapp_group_broadcasts')
+      .select(
+        'account_id, content_type, content_text, media_url, filename, window_start, window_end, window_days, timezone'
+      )
+      .eq('id', id)
+      .single()
+    const value = (data as CampaignRow | null) ?? null
+    broadcastCache.set(id, value)
+    return value
+  }
+
   for (const row of due) {
+    const kind: 'group' | 'contact' | 'phone' = row.group_id
+      ? 'group'
+      : row.contact_id
+        ? 'contact'
+        : 'phone'
+
+    const broadcast = await loadBroadcast(row.broadcast_id as string)
+
+    // The window is checked BEFORE the claim, deliberately. Claiming
+    // first and reverting to 'pending' on a closed window leaves a hole:
+    // if the process dies between those two writes the row is stranded
+    // in 'processing', which the drain query never selects again — it
+    // would neither send nor fail, just silently vanish. Skipping before
+    // the claim costs one cached read and has no such state.
+    //
+    // Re-checking at all (on top of the precomputed `send_at`) matters
+    // because planSendTimes() bakes in the window as it existed at
+    // creation time; an operator can narrow or move it afterwards, and
+    // targets already staggered into the old window have no way to know.
+    // It applies to every recipient kind — the window is a property of
+    // the campaign, not of how a given target happens to be addressed.
+    if (broadcast && !isCampaignWindowOpen(broadcast)) continue
+
     const { data: claim } = await admin
       .from('whatsapp_group_broadcast_targets')
       .update({ status: 'processing' })
@@ -85,59 +167,110 @@ export async function GET(request: Request) {
     }
 
     try {
-      const { data: broadcast } = await admin
-        .from('whatsapp_group_broadcasts')
-        .select('account_id, content_type, content_text, media_url, filename')
-        .eq('id', row.broadcast_id)
-        .single()
       if (!broadcast) {
         await fail('Parent broadcast no longer exists')
         continue
       }
 
-      const { data: group } = await admin
-        .from('whatsapp_groups')
-        .select('group_jid, account_id')
-        .eq('id', row.group_id)
-        .single()
-      if (!group) {
-        await fail('Target group no longer exists')
-        continue
-      }
+      if (kind === 'group') {
+        const { data: group } = await admin
+          .from('whatsapp_groups')
+          .select('group_jid, account_id')
+          .eq('id', row.group_id)
+          .single()
+        if (!group) {
+          await fail('Target group no longer exists')
+          continue
+        }
 
-      const creds = await resolveGroupCredentials(admin, broadcast.account_id as string)
-      const provider = createUazapiProvider({ host: creds.host, token: creds.token })
+        const creds = await resolveGroupCredentials(admin, broadcast.account_id as string)
+        const provider = createUazapiProvider({ host: creds.host, token: creds.token })
 
-      const result = await sendGroupContent(provider, group.group_jid as string, {
-        content_type: broadcast.content_type as GroupContentType,
-        content_text: broadcast.content_text as string | null,
-        media_url: broadcast.media_url as string | null,
-        filename: broadcast.filename as string | null,
-      })
-
-      await admin
-        .from('whatsapp_group_broadcast_targets')
-        .update({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          provider_message_id: result.messageId,
-          error_message: null,
+        const result = await sendGroupContent(provider, group.group_jid as string, {
+          content_type: broadcast.content_type as GroupContentType,
+          content_text: broadcast.content_text as string | null,
+          media_url: broadcast.media_url as string | null,
+          filename: broadcast.filename as string | null,
         })
-        .eq('id', row.id)
 
-      // Mirror into the group's normal message feed so the campaign
-      // shows up in the same thread a human sending from the group
-      // chat would see — same table POST /groups/[id]/messages writes.
-      await admin.from('whatsapp_group_messages').insert({
-        account_id: broadcast.account_id,
-        group_id: row.group_id,
-        direction: 'outbound',
-        content_type: broadcast.content_type,
-        content_text: broadcast.content_text,
-        media_url: broadcast.media_url,
-        filename: broadcast.filename,
-        provider_message_id: result.messageId,
-      })
+        await admin
+          .from('whatsapp_group_broadcast_targets')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            provider_message_id: result.messageId,
+            error_message: null,
+          })
+          .eq('id', row.id)
+
+        // Mirror into the group's normal message feed so the campaign
+        // shows up in the same thread a human sending from the group
+        // chat would see — same table POST /groups/[id]/messages writes.
+        await admin.from('whatsapp_group_messages').insert({
+          account_id: broadcast.account_id,
+          group_id: row.group_id,
+          direction: 'outbound',
+          content_type: broadcast.content_type,
+          content_text: broadcast.content_text,
+          media_url: broadcast.media_url,
+          filename: broadcast.filename,
+          provider_message_id: result.messageId,
+        })
+      } else {
+        // contact_id or phone: find-or-create the conversation, then
+        // send through the same core the dashboard composer and the
+        // public API use — this persists the message + updates the
+        // conversation on its own, so (unlike the group branch above)
+        // there is no separate feed table to mirror into here.
+        const messageText =
+          (row.rendered_text as string | null) ?? (broadcast.content_text as string | null)
+
+        let conversationId: string
+        if (kind === 'contact') {
+          const { data: contact } = await admin
+            .from('contacts')
+            .select('phone, name')
+            .eq('id', row.contact_id)
+            .eq('account_id', broadcast.account_id)
+            .maybeSingle()
+          if (!contact) {
+            await fail('Target contact no longer exists')
+            continue
+          }
+          const resolvedConv = await resolveConversationByPhone(
+            admin,
+            broadcast.account_id as string,
+            contact.phone as string,
+            contact.name as string | null
+          )
+          conversationId = resolvedConv.conversationId
+        } else {
+          const resolvedConv = await resolveConversationByPhone(
+            admin,
+            broadcast.account_id as string,
+            row.phone as string
+          )
+          conversationId = resolvedConv.conversationId
+        }
+
+        const result = await sendMessageToConversation(admin, broadcast.account_id as string, {
+          conversationId,
+          messageType: broadcast.content_type as string,
+          contentText: messageText,
+          mediaUrl: broadcast.media_url as string | null,
+          filename: broadcast.filename as string | null,
+        })
+
+        await admin
+          .from('whatsapp_group_broadcast_targets')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            provider_message_id: result.whatsappMessageId,
+            error_message: null,
+          })
+          .eq('id', row.id)
+      }
 
       await admin.rpc('bump_whatsapp_group_broadcast_counters', {
         p_broadcast_id: row.broadcast_id,
@@ -148,9 +281,11 @@ export async function GET(request: Request) {
       const message =
         err instanceof GroupsNotAvailableError
           ? err.message
-          : err instanceof Error
+          : err instanceof SendMessageError
             ? err.message
-            : 'Unknown error'
+            : err instanceof Error
+              ? err.message
+              : 'Unknown error'
       await fail(message)
     }
   }
