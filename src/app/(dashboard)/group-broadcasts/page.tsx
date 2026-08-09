@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Megaphone, Plus, Loader2 } from 'lucide-react';
+import { Megaphone, Plus, Loader2, Users } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
@@ -121,15 +121,21 @@ export default function GroupBroadcastsPage() {
           <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <GatedButton
-          canAct={canManage}
-          gateReason="send messages"
-          onClick={() => router.push('/group-broadcasts/new')}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t('newBroadcast')}
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => router.push('/group-broadcasts/audiences')}>
+            <Users className="h-4 w-4" />
+            {t('manageAudiences')}
+          </Button>
+          <GatedButton
+            canAct={canManage}
+            gateReason="send messages"
+            onClick={() => router.push('/group-broadcasts/new')}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            {t('newBroadcast')}
+          </GatedButton>
+        </div>
       </div>
 
       {broadcasts.length === 0 ? (

@@ -68,8 +68,15 @@ function normalizePhone(raw: string): string {
 interface AudiencePickerProps {
   selection: AudienceSelection;
   onSelectionChange: (next: AudienceSelection) => void;
-  saveAsName: string;
-  onSaveAsNameChange: (name: string) => void;
+  /**
+   * Composer-only affordances. The audiences manager edits one audience
+   * directly, so for it "load another saved audience over this one" and
+   * "save this selection as a new audience" are both nonsense — omit the
+   * handler and neither control renders.
+   */
+  saveAsName?: string;
+  onSaveAsNameChange?: (name: string) => void;
+  showSavedAudiences?: boolean;
 }
 
 /**
@@ -85,6 +92,7 @@ export function AudiencePicker({
   onSelectionChange,
   saveAsName,
   onSaveAsNameChange,
+  showSavedAudiences = true,
 }: AudiencePickerProps) {
   const t = useTranslations('GroupBroadcasts.new.audience');
   const supabase = createClient();
@@ -160,6 +168,10 @@ export function AudiencePicker({
   }, []);
 
   useEffect(() => {
+    if (!showSavedAudiences) {
+      setSavedAudiencesLoading(false);
+      return;
+    }
     let cancelled = false;
     async function loadAudiences() {
       try {
@@ -174,7 +186,7 @@ export function AudiencePicker({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [showSavedAudiences]);
 
   const filteredContacts = useMemo(() => {
     const q = contactSearch.trim().toLowerCase();
@@ -434,6 +446,7 @@ export function AudiencePicker({
         <span className="text-sm font-medium text-foreground">
           {t('totalRecipients', { count: totalRecipients })}
         </span>
+        {showSavedAudiences && (
         <div className="flex items-center gap-2">
           {audienceLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
           <Select
@@ -464,17 +477,20 @@ export function AudiencePicker({
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="audience-save-as">{t('saveAsLabel')}</Label>
-        <Input
-          id="audience-save-as"
-          value={saveAsName}
-          onChange={(e) => onSaveAsNameChange(e.target.value)}
-          placeholder={t('saveAsPlaceholder')}
-        />
-      </div>
+      {onSaveAsNameChange && (
+        <div className="space-y-1.5">
+          <Label htmlFor="audience-save-as">{t('saveAsLabel')}</Label>
+          <Input
+            id="audience-save-as"
+            value={saveAsName ?? ''}
+            onChange={(e) => onSaveAsNameChange(e.target.value)}
+            placeholder={t('saveAsPlaceholder')}
+          />
+        </div>
+      )}
     </div>
   );
 }
