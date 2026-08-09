@@ -664,7 +664,7 @@ function InboxPageInner() {
               resyncToken={resyncToken}
             />
           ) : (
-            <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+            <div className="flex min-h-0 flex-1 w-full flex-col border-r border-border bg-card lg:w-80">
               <GroupList
                 activeGroupId={activeGroup?.id ?? null}
                 onSelect={handleSelectGroup}
