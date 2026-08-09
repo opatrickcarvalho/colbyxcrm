@@ -10,6 +10,7 @@ import {
   fetchChatAvatar,
 } from '@/lib/whatsapp/providers/uazapi';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -63,9 +64,11 @@ interface UazapiMessage {
   caption?: string;
   /**
    * Usually the message body as a string, but for a button/list tap
-   * this is an object — WhatsApp's raw InteractiveResponseMessage,
-   * e.g. `{ selectedID: "new", selectedDisplayText: "New customer",
-   * contextInfo: {...} }`. See `extractButtonReply` below.
+   * this is an object — WhatsApp's raw reply envelope, e.g.
+   * `{ selectedButtonID: "btn_1", Response: { SelectedDisplayText:
+   * "Resposta 01" }, contextInfo: {...} }`. The casing varies between
+   * payloads; `extractButtonReply` in lib/whatsapp/providers/
+   * uazapi-inbound.ts is what makes sense of it.
    */
   content?: string | Record<string, unknown>;
   base64?: string;
@@ -260,84 +263,6 @@ function extFromMime(mime: string, contentType: string): string {
   if (contentType === 'video') return 'mp4';
   if (contentType === 'audio') return 'ogg';
   return 'bin';
-}
-
-/**
- * Detect a button/list tap. uazapi hands back WhatsApp's raw
- * InteractiveResponseMessage in `content` as an object — not a string,
- * not the `choices`-string echo the send-side comment elsewhere in
- * this file used to assume. Falling back to `message.content` as
- * plain text (the old code did, for every non-media message) dumped
- * this whole object — quoted-message context and all — into the
- * chat as a wall of JSON instead of the button title the customer
- * actually tapped.
- */
-function str(value: unknown): string | null {
-  return typeof value === 'string' && value ? value : null;
-}
-
-function obj(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function extractButtonReply(
-  content: string | Record<string, unknown> | undefined
-): { id: string; title: string } | null {
-  const root = obj(content);
-  if (!root) return null;
-
-  // Only the flattened `selectedDisplayText`/`selectedID` pair used to be
-  // recognised. WhatsApp has four different reply envelopes and uazapi
-  // forwards whichever one the transport produced, so a tap arriving in
-  // any of the nested forms fell through to the plain-text path — stored
-  // as a blank message with no reply id, which is what left every
-  // `interactive_reply` automation unable to match.
-  const buttons = obj(root.buttonsResponseMessage);
-  const template = obj(root.templateButtonReplyMessage);
-  const list = obj(root.listResponseMessage);
-  const interactive = obj(root.interactiveResponseMessage);
-  const singleSelect = obj(list?.singleSelectReply);
-
-  // A native-flow quick reply carries its id as a JSON *string*, e.g.
-  // `{"id":"btn_1"}`. Malformed JSON there is not worth failing the whole
-  // webhook over — fall through to the other candidates instead.
-  let nativeFlowId: string | null = null;
-  const nativeFlow = obj(
-    interactive?.nativeFlowResponseMessage ?? root.nativeFlowResponseMessage
-  );
-  const paramsJson = str(nativeFlow?.paramsJson);
-  if (paramsJson) {
-    try {
-      const parsed = obj(JSON.parse(paramsJson));
-      nativeFlowId = str(parsed?.id) ?? str(parsed?.selectedId);
-    } catch {
-      nativeFlowId = null;
-    }
-  }
-
-  const id =
-    str(root.selectedID) ??
-    str(root.selectedId) ??
-    str(root.selectedButtonId) ??
-    str(buttons?.selectedButtonId) ??
-    str(template?.selectedId) ??
-    str(singleSelect?.selectedRowId) ??
-    nativeFlowId;
-
-  const title =
-    str(root.selectedDisplayText) ??
-    str(buttons?.selectedDisplayText) ??
-    str(template?.selectedDisplayText) ??
-    str(list?.title) ??
-    str(obj(interactive?.body)?.text);
-
-  if (!id && !title) return null;
-  // Either half alone is still a usable reply: an id with no label shows
-  // the id in the thread, and a label with no id at least stops the
-  // message from arriving blank.
-  return { id: id ?? (title as string), title: title ?? (id as string) };
 }
 
 export async function POST(
@@ -1204,8 +1129,12 @@ export async function POST(
         // makes the next occurrence self-describing instead of
         // unreproducible. Narrow on purpose: a message that parsed fine
         // stores nothing extra.
-        ...(!message.fromMe && !buttonReply && !text && obj(message.content)
-          ? { interactive_payload: obj(message.content) }
+        ...(!message.fromMe &&
+        !buttonReply &&
+        !text &&
+        message.content &&
+        typeof message.content === 'object'
+          ? { interactive_payload: message.content }
           : {}),
         // Omitted entirely when unparseable, so the column default wins.
         ...(createdAt ? { created_at: createdAt } : {}),
