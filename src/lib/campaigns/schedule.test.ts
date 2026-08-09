@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isWithinWindow,
   nextWindowOpening,
+  parseScheduledAt,
   planSendTimes,
   type SendWindow,
 } from './schedule';
@@ -253,6 +254,56 @@ describe('isWithinWindow', () => {
     };
     // 2026-08-15 is a Saturday.
     expect(isWithinWindow(iso('2026-08-15T12:00:00.000Z'), window)).toBe(false);
+  });
+});
+
+describe('parseScheduledAt', () => {
+  // The regression this function exists for: an operator in UTC-3 picking
+  // 14:00 in a `datetime-local` input meant 17:00Z, not 14:00Z. Reading
+  // the naive string in the server's zone is what made a same-day time
+  // look like it was in the past.
+  it('reads a naive wall-clock string in the given zone, not the host zone', () => {
+    expect(
+      parseScheduledAt('2026-08-09T14:00', 'America/Sao_Paulo')?.toISOString()
+    ).toBe('2026-08-09T17:00:00.000Z');
+    expect(parseScheduledAt('2026-08-09T14:00', 'UTC')?.toISOString()).toBe(
+      '2026-08-09T14:00:00.000Z'
+    );
+  });
+
+  it('accepts optional seconds in the naive form', () => {
+    expect(
+      parseScheduledAt('2026-08-09T14:00:30', 'America/Sao_Paulo')?.toISOString()
+    ).toBe('2026-08-09T17:00:30.000Z');
+  });
+
+  it('leaves an explicit offset or Z alone — the zone argument must not shift it', () => {
+    expect(
+      parseScheduledAt('2026-08-09T17:00:00.000Z', 'America/Sao_Paulo')?.toISOString()
+    ).toBe('2026-08-09T17:00:00.000Z');
+    expect(
+      parseScheduledAt('2026-08-09T14:00:00-03:00', 'UTC')?.toISOString()
+    ).toBe('2026-08-09T17:00:00.000Z');
+  });
+
+  it('returns null for anything that is not a date', () => {
+    expect(parseScheduledAt('', 'UTC')).toBeNull();
+    expect(parseScheduledAt('amanhã de manhã', 'UTC')).toBeNull();
+  });
+
+  // Date.UTC() would roll these over into a plausible-looking instant
+  // (month 13 -> January of the next year, 31 February -> 3 March), which
+  // is worse than a 400: the campaign would fire on a date nobody asked
+  // for.
+  it('rejects out-of-range and non-existent calendar dates instead of rolling them over', () => {
+    expect(parseScheduledAt('2026-13-45T99:99', 'UTC')).toBeNull();
+    expect(parseScheduledAt('2026-02-31T10:00', 'UTC')).toBeNull();
+    expect(parseScheduledAt('2026-08-09T24:00', 'UTC')).toBeNull();
+    expect(parseScheduledAt('2027-02-29T10:00', 'UTC')).toBeNull();
+    // ...but a real leap day still parses.
+    expect(parseScheduledAt('2028-02-29T10:00', 'UTC')?.toISOString()).toBe(
+      '2028-02-29T10:00:00.000Z'
+    );
   });
 });
 

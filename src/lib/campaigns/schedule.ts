@@ -118,6 +118,64 @@ function localToInstant(
   return new Date(naiveUtcMs - recheckedOffset * 60000);
 }
 
+/**
+ * A wall-clock date-time with no offset — exactly what an
+ * `<input type="datetime-local">` produces ('2026-08-09T14:30'). Seconds
+ * are optional; anything carrying a 'Z' or a ±HH:MM offset deliberately
+ * fails this test and is left to `Date`.
+ */
+const NAIVE_DATETIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/**
+ * Parses a campaign's requested start instant, returning null when the
+ * value is not a usable date.
+ *
+ * The subtle case is a *naive* string. `new Date('2026-08-09T14:30')`
+ * resolves it against whatever zone the process happens to run in — the
+ * developer's laptop in dev, UTC on the host in production. So an
+ * operator in UTC-3 picking 14:00 today would have it read as 11:00
+ * their own time: either already past (rejected as "not in the future")
+ * or, further out, silently three hours early. Interpreting it in the
+ * campaign's own `timeZone` is the only reading that matches what the
+ * person picking the time meant, and it makes the result independent of
+ * where the server runs.
+ */
+export function parseScheduledAt(value: string, timeZone: string): Date | null {
+  const naive = NAIVE_DATETIME_RE.exec(value.trim());
+  if (!naive) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const [year, month, day, hour, minute, second] = [
+    naive[1],
+    naive[2],
+    naive[3],
+    naive[4],
+    naive[5],
+    naive[6] ?? '0',
+  ].map(Number);
+
+  // `Date.UTC` silently rolls impossible components over (month 13 becomes
+  // January of the next year, 31 February becomes 3 March), which would
+  // turn a malformed request into a plausible-looking date instead of a
+  // rejection. The regex only proves the shape, so the values are range-
+  // and calendar-checked here before any conversion happens.
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  const asUtc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    asUtc.getUTCFullYear() !== year ||
+    asUtc.getUTCMonth() !== month - 1 ||
+    asUtc.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return localToInstant(year, month, day, hour, minute, second, timeZone);
+}
+
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 function parseHHMM(value: string): { hour: number; minute: number } {

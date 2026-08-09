@@ -1105,7 +1105,8 @@
         "windowStartLabel": "Start",
         "windowEndLabel": "End",
         "windowDaysLabel": "Days of week",
-        "windowInvalid": "Set a start, end, and at least one day."
+        "windowInvalid": "Set a start, end, and at least one day.",
+        "invalidDate": "Pick a date and time in the future."
       }
     },
     "detail": {

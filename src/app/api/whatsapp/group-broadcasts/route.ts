@@ -10,7 +10,7 @@ import {
   resolveGroupCredentials,
   GroupsNotAvailableError,
 } from '@/lib/whatsapp/providers/uazapi-groups';
-import { planSendTimes, type SendWindow } from '@/lib/campaigns/schedule';
+import { planSendTimes, parseScheduledAt, type SendWindow } from '@/lib/campaigns/schedule';
 import { renderMessage, validateSpintax, type SpintaxVars } from '@/lib/campaigns/spintax';
 import {
   resolveTargets,
@@ -278,8 +278,12 @@ export async function POST(request: Request) {
 
     let scheduledDate: Date;
     if (scheduled_at) {
-      const parsed = new Date(scheduled_at);
-      if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+      // A caller that sends a bare wall-clock time ('2026-08-09T14:30')
+      // means it in the campaign's zone, not the server's — see
+      // parseScheduledAt(). Anything with a 'Z' or an offset, which is
+      // what the composer now sends, is already unambiguous.
+      const parsed = parseScheduledAt(scheduled_at, resolvedTimezone);
+      if (!parsed || parsed.getTime() <= Date.now()) {
         return NextResponse.json(
           { error: 'scheduled_at must be a valid future date/time' },
           { status: 400 }

@@ -1105,7 +1105,8 @@
         "windowStartLabel": "시작",
         "windowEndLabel": "종료",
         "windowDaysLabel": "요일",
-        "windowInvalid": "시작, 종료 시간과 요일을 하나 이상 설정하세요."
+        "windowInvalid": "시작, 종료 시간과 요일을 하나 이상 설정하세요.",
+        "invalidDate": "미래의 날짜와 시간을 선택하세요."
       }
     },
     "detail": {

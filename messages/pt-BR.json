@@ -1105,7 +1105,8 @@
         "windowStartLabel": "Início",
         "windowEndLabel": "Fim",
         "windowDaysLabel": "Dias da semana",
-        "windowInvalid": "Informe início, fim e ao menos um dia."
+        "windowInvalid": "Informe início, fim e ao menos um dia.",
+        "invalidDate": "Escolha uma data e hora no futuro."
       }
     },
     "detail": {

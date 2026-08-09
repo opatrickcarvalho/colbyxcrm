@@ -213,6 +213,24 @@ export default function NewGroupBroadcastPage() {
 
   async function handleSubmit() {
     if (!canSubmit) return;
+
+    // `datetime-local` hands back a naive wall-clock string with no
+    // offset, so it only means what the operator picked while it is
+    // still in the browser — the zone they are sitting in. Resolve it to
+    // an absolute instant here rather than shipping the ambiguity to the
+    // server, which would otherwise read it in its own zone (UTC in
+    // production) and reject it as past, or silently fire it hours
+    // early. Same contract the inbox composer uses for scheduled
+    // messages.
+    let scheduledDate: Date | null = null;
+    if (scheduleAt) {
+      scheduledDate = new Date(scheduleAt);
+      if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+        toast.error(t('schedule.invalidDate'));
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch('/api/whatsapp/group-broadcasts', {
@@ -226,7 +244,13 @@ export default function NewGroupBroadcastPage() {
           filename: contentType === 'document' ? filename || undefined : undefined,
           delay_seconds: delayNum,
           delay_jitter_pct: jitterNum,
-          scheduled_at: scheduleAt || undefined,
+          scheduled_at: scheduledDate ? scheduledDate.toISOString() : undefined,
+          // The sending window is wall-clock, so it is meaningless
+          // without the zone it was authored in. Until now this was left
+          // unset and every campaign silently inherited the column
+          // default (America/Sao_Paulo), which is wrong for any operator
+          // elsewhere.
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           window: windowEnabled
             ? { start: windowStart, end: windowEnd, days: Array.from(windowDays).sort() }
             : null,
