@@ -38,6 +38,14 @@ interface Profile {
   /** UI language ('en' | 'pt-BR'). Drives the NEXT_LOCALE cookie next-intl
    *  reads (see src/i18n/request.ts) — kept in sync below on every fetch. */
   locale: string;
+  /**
+   * Operator flag for the `/admin` control plane (migration 040), never
+   * settable from the app. Exposed here purely so the shell can offer a
+   * way *in* — every `/api/admin/*` route re-verifies it server-side
+   * through `requirePlatformAdmin()`, so showing or hiding a link
+   * grants nothing on its own.
+   */
+  is_platform_admin: boolean;
 }
 
 interface AccountSummary {
@@ -141,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from('profiles')
         .select(
-          'id, full_name, email, avatar_url, role, beta_features, account_id, account_role, locale'
+          'id, full_name, email, avatar_url, role, beta_features, account_id, account_role, locale, is_platform_admin'
         )
         .eq('user_id', userId)
         .maybeSingle();
@@ -221,6 +229,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_id: data.account_id ?? null,
           account_role: accountRole,
           locale,
+          // Same defensive narrowing as `beta_features`: a deployment
+          // that hasn't run migration 040 returns undefined here, and
+          // "not an admin" is the safe reading.
+          is_platform_admin: data.is_platform_admin === true,
         });
         setAccount(accountRow);
 

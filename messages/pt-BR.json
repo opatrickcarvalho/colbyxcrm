@@ -29,6 +29,7 @@
     "flows": "Fluxos",
     "aiAgents": "Agentes de IA",
     "settings": "Configurações",
+    "platformAdmin": "Admin da plataforma",
     "beta": "Beta",
     "unreadConversations": "{count} {count, plural, =1 {conversa não lida} other {conversas não lidas}}",
     "unreadNotifications": "{count} {count, plural, =1 {notificação não lida} other {notificações não lidas}}",
@@ -2143,6 +2144,10 @@
     "addSection": "Adicionar seção"
   },
   "Admin": {
+    "shell": {
+      "title": "Console da plataforma",
+      "backToCrm": "Voltar ao CRM"
+    },
     "accounts": {
       "title": "Contas",
       "subtitle": "Todas as contas de clientes desta plataforma.",

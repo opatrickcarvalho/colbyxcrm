@@ -29,6 +29,7 @@
     "flows": "Flows",
     "aiAgents": "AI Agents",
     "settings": "Settings",
+    "platformAdmin": "Platform admin",
     "beta": "Beta",
     "unreadConversations": "{count} unread {count, plural, =1 {conversation} other {conversations}}",
     "unreadNotifications": "{count} unread {count, plural, =1 {notification} other {notifications}}",
@@ -2143,6 +2144,10 @@
       "addSection": "Add section"
   },
   "Admin": {
+    "shell": {
+      "title": "Platform console",
+      "backToCrm": "Back to CRM"
+    },
     "accounts": {
       "title": "Accounts",
       "subtitle": "Every tenant account on this platform.",
