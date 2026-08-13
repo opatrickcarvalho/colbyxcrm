@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { getAsaasWebhookToken } from '@/lib/billing/asaas/client';
 import { resolveEventEffect } from '@/lib/billing/asaas/events';
 import type { AsaasWebhookEvent } from '@/lib/billing/asaas/types';
 import {
@@ -24,7 +25,9 @@ import {
  * Auth
  * ----
  * The `asaas-access-token` header, compared in constant time against
- * ASAAS_WEBHOOK_TOKEN — the same shape as the four cron drains. This
+ * the webhook token from /admin/settings (encrypted in `platform_settings`,
+ * env `ASAAS_WEBHOOK_TOKEN` as fallback — see src/lib/billing/asaas/client.ts).
+ * Same shape as the four cron drains' `x-cron-secret`. This
  * route sits outside `/api/whatsapp/`, so middleware never touches it
  * and it must guard itself.
  *
@@ -53,7 +56,7 @@ import {
  * for one payment. See src/lib/billing/store.ts.
  */
 export async function POST(request: Request) {
-  const expected = process.env.ASAAS_WEBHOOK_TOKEN;
+  const expected = await getAsaasWebhookToken();
   if (!expected) {
     // Same posture as the cron drains: unconfigured is 503, not 500.
     return NextResponse.json(

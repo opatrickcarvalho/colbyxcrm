@@ -123,17 +123,15 @@ export async function GET() {
         }
       : null;
 
-    const payments: BillingPaymentDTO[] = (paymentsRes.data ?? []).map(
-      (p) => ({
-        id: p.id as string,
-        status: p.status as string,
-        billingType: (p.billing_type as string | null) ?? null,
-        valueCents: p.value_cents as number,
-        dueDate: (p.due_date as string | null) ?? null,
-        paidAt: (p.paid_at as string | null) ?? null,
-        invoiceUrl: (p.invoice_url as string | null) ?? null,
-      })
-    );
+    const payments: BillingPaymentDTO[] = (paymentsRes.data ?? []).map((p) => ({
+      id: p.id as string,
+      status: p.status as string,
+      billingType: (p.billing_type as string | null) ?? null,
+      valueCents: p.value_cents as number,
+      dueDate: (p.due_date as string | null) ?? null,
+      paidAt: (p.paid_at as string | null) ?? null,
+      invoiceUrl: (p.invoice_url as string | null) ?? null,
+    }));
 
     const response: BillingSummaryResponse = {
       entitled: billing.entitled,
@@ -141,7 +139,7 @@ export async function GET() {
       planExpiresAt: billing.planExpiresAt,
       trialEndsAt: billing.trialEndsAt,
       billingExempt: billing.exempt,
-      asaasConfigured: isAsaasConfigured(),
+      asaasConfigured: await isAsaasConfigured(),
       role,
       cpfCnpjLast4:
         (cpfRes.data?.billing_cpf_cnpj_last4 as string | null) ?? null,

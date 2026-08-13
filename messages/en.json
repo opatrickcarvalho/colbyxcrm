@@ -2259,6 +2259,32 @@
       "confirmEnableDesc": "This immediately locks out any account with no active plan (past its trial and grace window). Exempt accounts are unaffected.",
       "confirmEnableConfirm": "Yes, enable it",
       "confirmEnableCancel": "Cancel"
+    },
+    "asaasSettings": {
+      "title": "Asaas credentials",
+      "subtitle": "The API key and webhook the whole platform uses to process subscriptions.",
+      "sourceDatabase": "Configured (database)",
+      "sourceEnv": "Configured (environment variable)",
+      "sourceNone": "Not configured",
+      "fieldEnv": "Environment",
+      "fieldEnvHint": "Sandbox for testing, no real charges. Production moves real money.",
+      "envSandbox": "Sandbox (testing)",
+      "envProduction": "Production",
+      "fieldApiKey": "API key",
+      "fieldApiKeyPlaceholderConfigured": "•••••••••••••••• (leave blank to keep the current one)",
+      "fieldApiKeyPlaceholderEmpty": "Paste the Asaas API key",
+      "fieldApiKeyHint": "The key is never shown again after saving. Paste a new one only to replace it.",
+      "saveCredentials": "Save credentials",
+      "webhookTitle": "Webhook",
+      "webhookUrlLabel": "Webhook URL (register this with Asaas)",
+      "webhookTokenLabel": "Webhook token",
+      "copied": "Copied.",
+      "clipboardBlocked": "Couldn't copy automatically — copy the value by hand.",
+      "regenerateToken": "Generate new token",
+      "confirmRegenerateTitle": "Generate a new webhook token?",
+      "confirmRegenerateDesc": "The current token stops working immediately. You'll need to paste the new value into the Asaas dashboard before webhooks are accepted again.",
+      "confirmRegenerateConfirm": "Yes, generate a new token",
+      "confirmRegenerateCancel": "Cancel"
     }
   },
   "Billing": {

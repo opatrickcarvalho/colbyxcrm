@@ -71,7 +71,7 @@ export async function GET(request: Request) {
   // Reconciliation needs live Asaas API calls — skip it entirely on a
   // deployment that hasn't configured ASAAS_API_KEY rather than let
   // every call fail one by one.
-  const reconciled = isAsaasConfigured()
+  const reconciled = (await isAsaasConfigured())
     ? await reconcilePendingSubscriptions(db)
     : { checked: 0, updated: 0 };
 

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const ctx = await requireRole('owner', { allowUnentitled: true });
     const { accountId, userId, supabase } = ctx;
 
-    if (!isAsaasConfigured()) {
+    if (!(await isAsaasConfigured())) {
       return NextResponse.json(
         { error: 'Billing is not configured on this deployment' },
         { status: 503 }

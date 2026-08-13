@@ -2259,6 +2259,32 @@
       "confirmEnableDesc": "Isso bloqueia imediatamente qualquer conta sem plano ativo (fora do período de teste e de carência). Contas isentas não são afetadas.",
       "confirmEnableConfirm": "Sim, ativar",
       "confirmEnableCancel": "Cancelar"
+    },
+    "asaasSettings": {
+      "title": "Credenciais Asaas",
+      "subtitle": "Chave de API e webhook usados por toda a plataforma para processar assinaturas.",
+      "sourceDatabase": "Configurada (banco de dados)",
+      "sourceEnv": "Configurada (variável de ambiente)",
+      "sourceNone": "Não configurada",
+      "fieldEnv": "Ambiente",
+      "fieldEnvHint": "Sandbox para testes, sem cobranças reais. Produção move dinheiro de verdade.",
+      "envSandbox": "Sandbox (testes)",
+      "envProduction": "Produção",
+      "fieldApiKey": "Chave de API",
+      "fieldApiKeyPlaceholderConfigured": "•••••••••••••••• (deixe em branco para manter a atual)",
+      "fieldApiKeyPlaceholderEmpty": "Cole a chave de API da Asaas",
+      "fieldApiKeyHint": "A chave nunca é exibida depois de salva. Cole uma nova apenas para substituí-la.",
+      "saveCredentials": "Salvar credenciais",
+      "webhookTitle": "Webhook",
+      "webhookUrlLabel": "URL do webhook (cadastre isto na Asaas)",
+      "webhookTokenLabel": "Token do webhook",
+      "copied": "Copiado.",
+      "clipboardBlocked": "Não foi possível copiar automaticamente — copie o valor manualmente.",
+      "regenerateToken": "Gerar novo token",
+      "confirmRegenerateTitle": "Gerar um novo token de webhook?",
+      "confirmRegenerateDesc": "O token atual para de funcionar imediatamente. Você precisa colar o novo valor no painel da Asaas antes que os webhooks voltem a ser aceitos.",
+      "confirmRegenerateConfirm": "Sim, gerar novo token",
+      "confirmRegenerateCancel": "Cancelar"
     }
   },
   "Billing": {
