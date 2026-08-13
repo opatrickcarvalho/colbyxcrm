@@ -38,6 +38,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { accountIsEntitled } from '@/lib/billing/guard';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 
@@ -152,6 +153,39 @@ export async function runInboundSideEffects(
   }
 
   await flagBroadcastReplyIfAny(accountId, contactId);
+
+  // Billing gate — and note WHERE it sits.
+  //
+  // Everything above this line has already run: the contact upsert,
+  // the conversation upsert, the message insert, the unread bump.
+  // That is deliberate and it is the single most important invariant
+  // in the billing feature. An unpaid tenant must lose ZERO inbound
+  // history: WhatsApp does not replay, there is no backfill, and a
+  // customer who pays after a lapse has to find their conversations
+  // exactly where they left them.
+  //
+  // What stops here is only the half that SPENDS or SENDS on their
+  // behalf: flows, automations and the AI assistant (which also burns
+  // their AI credit).
+  //
+  // The customer's own outbound webhooks below keep firing. They are a
+  // notification to a system the customer operates, not a message to
+  // one of their contacts — silently breaking their integration would
+  // be a support incident, not a lever.
+  //
+  // Belt-and-braces: the two webhook routes also check entitlement
+  // before calling this function. Both checks are intentional — this
+  // one is what protects a future caller that forgets.
+  if (!(await accountIsEntitled(supabaseAdmin(), accountId))) {
+    await dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
+      conversation_id: conversationId,
+      contact_id: contactId,
+      whatsapp_message_id: providerMessageId,
+      content_type: contentType,
+      text: contentText,
+    });
+    return;
+  }
 
   // Awaited, not fire-and-forget: `consumed` decides whether the
   // content-level automation triggers below are allowed to fire. When

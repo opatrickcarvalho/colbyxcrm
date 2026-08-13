@@ -21,6 +21,7 @@ export type ApiErrorCode =
   | 'unauthorized' // missing / malformed / unknown / revoked / expired key
   | 'forbidden' // valid key, but missing the required scope
   | 'account_suspended' // valid key, but the account was suspended by a platform admin
+  | 'account_not_entitled' // valid key, but the account has no active plan
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'
@@ -66,6 +67,20 @@ export function accountSuspended(
   message = 'This account has been suspended'
 ): ApiError {
   return new ApiError('account_suspended', message, 403);
+}
+
+/**
+ * 402 — authenticated, but the account has no active plan.
+ *
+ * Distinct status from `account_suspended` (403) so an integrator can
+ * tell "your customer stopped paying us" apart from "your customer
+ * was suspended for abuse" without string-matching the message. The
+ * remedy differs: one is a card, the other is a conversation.
+ */
+export function accountNotEntitled(
+  message = 'This account has no active plan'
+): ApiError {
+  return new ApiError('account_not_entitled', message, 402);
 }
 
 /** 400 — bad input. */

@@ -308,6 +308,19 @@ export async function POST(
   if (acct?.status === 'suspended') {
     return NextResponse.json({ ok: true, ignored: 'account_suspended' });
   }
+  // DO NOT extend the condition above to cover unpaid accounts.
+  //
+  // Suspension is an operator action against abuse — stopping cold is
+  // the point. Non-payment is a billing state, and dropping inbound
+  // messages for it destroys customer data permanently: WhatsApp does
+  // not replay, and there is no backfill. A tenant who lapses for a
+  // week and then pays must find that week's conversations waiting.
+  //
+  // The billing gate lives further down, inside
+  // `runInboundSideEffects`, where it stops only the flows,
+  // automations and AI replies — never the persistence above it.
+  // The two checks look similar and are deliberately not the same
+  // check. See src/lib/whatsapp/inbound/side-effects.ts.
 
   let body: UazapiWebhookBody;
   try {

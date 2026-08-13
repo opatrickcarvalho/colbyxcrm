@@ -86,6 +86,18 @@ export async function middleware(request: NextRequest) {
     '/admin',
     '/scheduled-messages',
     '/groups',
+    // The billing page needs a session like any other dashboard
+    // route. Note this is the ONLY thing middleware knows about
+    // billing: it checks authentication, never entitlement.
+    //
+    // Entitlement is deliberately NOT checked here. It would need
+    // profiles -> accounts on every request the matcher catches
+    // (including RSC payloads and prefetches) for zero security —
+    // RLS (migration 054) and getCurrentAccount() are the real
+    // boundary — and every extra response branch in this file is a
+    // withRefreshedCookies() landmine (issue #288). The client shell
+    // does the redirect instead, gated on !profileLoading.
+    '/billing',
   ];
   if (
     !user &&

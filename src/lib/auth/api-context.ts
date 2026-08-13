@@ -34,12 +34,15 @@ import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
 import {
+  accountNotEntitled,
   accountSuspended,
   forbidden,
   rateLimited,
   unauthorized,
 } from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { isEntitled } from '@/lib/billing/entitlement';
+import { getBillingSettings } from '@/lib/billing/platform-settings';
 
 export interface ApiKeyContext {
   /** Discriminant — lets shared logic tell key auth from cookie auth. */
@@ -114,14 +117,21 @@ export async function requireApiKey(
   // `is_account_member` suspension gate (migration 040) never applies
   // here — unlike the cookie-session path, a suspended account's API
   // key would otherwise keep working. Check explicitly.
+  //
+  // The billing gate (migration 054) rides on the same function and
+  // is invisible here for the same reason, so it gets the same
+  // treatment: extra columns on the SAME row, no extra round trip.
   const admin = supabaseAdmin();
   const { data: account } = await admin
     .from('accounts')
-    .select('status')
+    .select('status, billing_status, plan_expires_at, billing_exempt')
     .eq('id', row.account_id)
     .maybeSingle();
   if (account?.status === 'suspended') {
     throw accountSuspended();
+  }
+  if (!isEntitled(account, await getBillingSettings())) {
+    throw accountNotEntitled();
   }
 
   touchLastUsed(row.id);

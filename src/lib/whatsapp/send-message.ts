@@ -38,6 +38,7 @@ import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import type { MessageTemplate } from '@/types';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
+import { accountIsEntitled } from '@/lib/billing/guard';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -197,6 +198,31 @@ export async function sendMessageToConversation(
     interactivePayload,
     replyToMessageId,
   } = params;
+
+  // THE outbound billing gate.
+  //
+  // This one check covers every path that sends on a customer's
+  // behalf — /api/whatsapp/send, the public /api/v1/messages, the
+  // scheduled-message drain, the group-broadcast drain, and
+  // resolve-conversation — which is why none of those four crons
+  // carries a gate of its own.
+  //
+  // It must come BEFORE anything else, and in particular before the
+  // provider call further down: the send core talks to Meta/UAZAPI
+  // *before* it persists, so a gate that relied on the insert failing
+  // would still have delivered a real WhatsApp message.
+  //
+  // Note the asymmetry with the inbound webhooks, which deliberately
+  // keep persisting messages for an unpaid tenant. Receiving costs us
+  // nothing and losing it is unrecoverable; sending spends the
+  // customer's provider credit and is exactly what a plan pays for.
+  if (!(await accountIsEntitled(db, accountId))) {
+    throw new SendMessageError(
+      'account_not_entitled',
+      'This account has no active plan',
+      402
+    );
+  }
 
   if (!conversationId) {
     throw new SendMessageError(
@@ -427,7 +453,11 @@ export async function sendMessageToConversation(
     const message =
       err instanceof Error ? err.message : 'Unknown provider API error';
     console.error(`[send-message] ${provider.id} send failed:`, message);
-    throw new SendMessageError('provider_error', `WhatsApp API error: ${message}`, 502);
+    throw new SendMessageError(
+      'provider_error',
+      `WhatsApp API error: ${message}`,
+      502
+    );
   }
 
   if (workingPhone !== sanitizedPhone) {
