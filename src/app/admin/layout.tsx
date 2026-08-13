@@ -1,5 +1,11 @@
 import Link from 'next/link';
-import { ArrowLeft, ShieldAlert } from 'lucide-react';
+import {
+  ArrowLeft,
+  CreditCard,
+  Settings,
+  ShieldAlert,
+  Users,
+} from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 /**
@@ -25,11 +31,36 @@ export default async function AdminLayout({
     <div className="bg-background min-h-screen">
       <header className="border-border bg-card/95 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <ShieldAlert className="text-primary h-5 w-5 shrink-0" />
-            <span className="text-foreground truncate text-sm font-semibold">
-              {t('title')}
-            </span>
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="text-primary h-5 w-5 shrink-0" />
+              <span className="text-foreground truncate text-sm font-semibold">
+                {t('title')}
+              </span>
+            </div>
+            <nav className="flex items-center gap-1">
+              <Link
+                href="/admin"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+              >
+                <Users className="h-4 w-4" />
+                {t('navAccounts')}
+              </Link>
+              <Link
+                href="/admin/plans"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+              >
+                <CreditCard className="h-4 w-4" />
+                {t('navPlans')}
+              </Link>
+              <Link
+                href="/admin/settings"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                {t('navSettings')}
+              </Link>
+            </nav>
           </div>
           <Link
             href="/dashboard"

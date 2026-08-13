@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { useBillingStatus } from "@/hooks/use-billing-status";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
@@ -15,6 +16,7 @@ import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -26,6 +28,22 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  // Entitlement gate — the one thing middleware.ts explicitly leaves to
+  // the client shell (see the comment on the `/billing` protectedPaths
+  // entry there). A locked-out account gets bounced to /billing on every
+  // route except /billing itself, so it can still read why it's locked
+  // and pay. `loaded` (not `loading`) is what we wait on: this must fire
+  // exactly once per lock state, not re-fire on every background refetch.
+  const { data: billingStatus, loaded: billingLoaded } = useBillingStatus(
+    !!user && !loading
+  );
+  useEffect(() => {
+    if (!billingLoaded || !billingStatus) return;
+    if (!billingStatus.entitled && !pathname.startsWith("/billing")) {
+      router.replace("/billing");
+    }
+  }, [billingLoaded, billingStatus, pathname, router]);
 
   if (loading) {
     return (
