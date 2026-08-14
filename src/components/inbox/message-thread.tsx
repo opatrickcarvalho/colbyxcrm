@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { keysetFilter, buildPage } from '@/lib/api/v1/pagination';
+import { keysetFilter } from '@/lib/api/v1/pagination';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
 import { PresenceDot } from '@/components/presence/presence-dot';
@@ -181,6 +181,22 @@ const DOODLE_BG_CLASSES =
 
 /** How many messages a single page fetch/prepend loads. */
 const MESSAGE_PAGE_SIZE = 50;
+
+/**
+ * Trim a `limit + 1`-over-fetched, desc-ordered page down to `limit`
+ * rows and report whether there's more beyond it. Deliberately NOT
+ * `buildPage` from `@/lib/api/v1/pagination` — that helper also mints
+ * an opaque cursor via `Buffer.toString('base64url')`, which is a
+ * Node-only encoding this client bundle's Buffer polyfill doesn't
+ * support (crashed with "Unknown encoding: base64url" the moment a
+ * conversation had more than one page of history). Nothing here ever
+ * needs an encoded cursor — the actual oldest-row object is kept in
+ * memory and fed straight to `keysetFilter` instead.
+ */
+function trimPage<T>(rows: T[], limit: number): { items: T[]; hasMore: boolean } {
+  if (rows.length <= limit) return { items: rows, hasMore: false };
+  return { items: rows.slice(0, limit), hasMore: true };
+}
 
 /** Merge an incremental "catch up" fetch into what's already loaded,
  *  deduping by id. Used by the resync path (see the fetch effect) —
@@ -436,11 +452,8 @@ export function MessageThread({
         if (error) {
           console.error('Failed to fetch messages:', error);
         } else {
-          const { items, nextCursor } = buildPage(
-            data ?? [],
-            MESSAGE_PAGE_SIZE
-          );
-          setHasMoreOlder(nextCursor !== null);
+          const { items, hasMore } = trimPage(data ?? [], MESSAGE_PAGE_SIZE);
+          setHasMoreOlder(hasMore);
           pendingScrollModeRef.current = 'bottom';
           onMessagesLoadedRef.current(conversationId, items.slice().reverse());
         }
@@ -522,8 +535,8 @@ export function MessageThread({
         return;
       }
 
-      const { items, nextCursor } = buildPage(data ?? [], MESSAGE_PAGE_SIZE);
-      setHasMoreOlder(nextCursor !== null);
+      const { items, hasMore } = trimPage(data ?? [], MESSAGE_PAGE_SIZE);
+      setHasMoreOlder(hasMore);
       if (items.length === 0) return;
 
       // Measured synchronously, right before the height-changing update
