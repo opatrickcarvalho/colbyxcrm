@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Filter, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Loader2 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,12 @@ function normalizePhone(raw: string): string {
   return raw.replace(/\D/g, '');
 }
 
+const CONTACTS_PAGE_SIZE = 30;
+// Safety cap on "select all matching" — bounds one click against an
+// account with an enormous, unfiltered contact list rather than pulling
+// every id into the browser at once.
+const SELECT_ALL_CAP = 5000;
+
 interface AudiencePickerProps {
   selection: AudienceSelection;
   onSelectionChange: (next: AudienceSelection) => void;
@@ -81,11 +87,16 @@ interface AudiencePickerProps {
 
 /**
  * Three-tab recipient picker (saved contacts / WhatsApp groups / pasted
- * phone numbers) shared by the campaign composer. Contacts and tags are
- * read directly via the Supabase client — the same pattern the Contacts
- * page and TemplateManager already use for account-scoped tables covered
- * by RLS — while groups and saved audiences go through their existing/
- * contracted API routes.
+ * phone numbers) shared by the campaign composer. Contacts are searched
+ * and paginated server-side — the same query shape (and the same
+ * `filter_contacts_by_tags` RPC for the tag filter, migration 025) the
+ * Contacts page uses — because an account can have thousands of
+ * contacts (e.g. from the inbox-extraction import) and a single
+ * unbounded/capped client fetch either misses rows past the cap or
+ * chokes rendering a checkbox per row. "Select all matching" re-runs the
+ * same filter server-side with a much higher cap to add a whole result
+ * set without paging through it by hand. Groups and saved audiences go
+ * through their existing/contracted API routes.
  */
 export function AudiencePicker({
   selection,
@@ -100,9 +111,14 @@ export function AudiencePicker({
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
   const [contactSearch, setContactSearch] = useState('');
+  const [contactPage, setContactPage] = useState(0);
+  const [totalContacts, setTotalContacts] = useState(0);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [tagsByContact, setTagsByContact] = useState<Record<string, string[]>>({});
+  const [selectingAll, setSelectingAll] = useState(false);
+  // Guards against out-of-order fetch responses when search/tag/page
+  // changes fire in quick succession — same pattern as the Contacts page.
+  const contactFetchSeq = useRef(0);
 
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
@@ -115,41 +131,80 @@ export function AudiencePicker({
   const [pickedAudienceId, setPickedAudienceId] = useState<string | undefined>(undefined);
   const [audienceLoading, setAudienceLoading] = useState(false);
 
+  // Tags are used both by the tag-filter popover and the RPC below —
+  // load once on mount.
   useEffect(() => {
     let cancelled = false;
-    async function loadContacts() {
-      const { data } = await supabase
-        .from('contacts')
-        .select('*')
-        .order('name', { ascending: true })
-        .limit(500);
-      if (!cancelled) {
-        setContacts(data ?? []);
-        setContactsLoading(false);
-      }
-    }
     async function loadTags() {
       const { data } = await supabase.from('tags').select('*');
       if (!cancelled) setAllTags(data ?? []);
     }
-    async function loadContactTags() {
-      const { data } = await supabase.from('contact_tags').select('contact_id, tag_id');
-      if (cancelled) return;
-      const map: Record<string, string[]> = {};
-      (data ?? []).forEach((row) => {
-        if (!map[row.contact_id]) map[row.contact_id] = [];
-        map[row.contact_id].push(row.tag_id);
-      });
-      setTagsByContact(map);
-    }
-    void loadContacts();
     void loadTags();
-    void loadContactTags();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchContacts = useCallback(async () => {
+    const seq = ++contactFetchSeq.current;
+    setContactsLoading(true);
+
+    const from = contactPage * CONTACTS_PAGE_SIZE;
+    const to = from + CONTACTS_PAGE_SIZE - 1;
+    const term = contactSearch.trim();
+
+    let rows: Contact[];
+    let count: number;
+
+    if (selectedTagIds.length > 0) {
+      // Tag filter active — same server-side join/count/paginate RPC the
+      // Contacts page uses (migration 025), so a tag covering hundreds
+      // of contacts can't silently truncate the result.
+      const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
+        p_tag_ids: selectedTagIds,
+        p_search: term || null,
+        p_limit: CONTACTS_PAGE_SIZE,
+        p_offset: from,
+      });
+      if (seq !== contactFetchSeq.current) return;
+      if (error) {
+        toast.error(t('errorLoadContacts'));
+        setContactsLoading(false);
+        return;
+      }
+      const matched = (data ?? []) as { contact: Contact; total_count: number }[];
+      rows = matched.map((r) => r.contact);
+      count = matched.length > 0 ? Number(matched[0].total_count) : 0;
+    } else {
+      let query = supabase
+        .from('contacts')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (term) {
+        const like = `%${term}%`;
+        query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+      }
+      const { data, count: exactCount, error } = await query;
+      if (seq !== contactFetchSeq.current) return;
+      if (error) {
+        toast.error(t('errorLoadContacts'));
+        setContactsLoading(false);
+        return;
+      }
+      rows = data ?? [];
+      count = exactCount ?? 0;
+    }
+
+    setContacts(rows);
+    setTotalContacts(count);
+    setContactsLoading(false);
+  }, [supabase, contactPage, contactSearch, selectedTagIds, t]);
+
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,21 +243,7 @@ export function AudiencePicker({
     };
   }, [showSavedAudiences]);
 
-  const filteredContacts = useMemo(() => {
-    const q = contactSearch.trim().toLowerCase();
-    return contacts.filter((c) => {
-      if (selectedTagIds.length > 0) {
-        const tags = tagsByContact[c.id] ?? [];
-        if (!selectedTagIds.some((id) => tags.includes(id))) return false;
-      }
-      if (!q) return true;
-      return (
-        (c.name ?? '').toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
-        (c.email ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [contacts, contactSearch, selectedTagIds, tagsByContact]);
+  const totalContactPages = Math.max(1, Math.ceil(totalContacts / CONTACTS_PAGE_SIZE));
 
   const filteredGroups = useMemo(() => {
     const q = groupFilter.trim().toLowerCase();
@@ -269,6 +310,77 @@ export function AudiencePicker({
 
   function toggleTagFilter(id: string) {
     setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setContactPage(0);
+  }
+
+  function handleContactSearchChange(value: string) {
+    setContactSearch(value);
+    setContactPage(0);
+  }
+
+  /**
+   * Re-runs the current search/tag filter server-side with a much
+   * higher cap and adds every matching id to the selection — the escape
+   * hatch for "everyone from this filter", since hand-checking a
+   * multi-hundred-row paginated list isn't realistic (this is what the
+   * inbox-extraction import needed: it can land far more contacts than
+   * a single page shows).
+   */
+  async function selectAllMatching() {
+    setSelectingAll(true);
+    try {
+      const term = contactSearch.trim();
+      let ids: string[];
+
+      if (selectedTagIds.length > 0) {
+        const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
+          p_tag_ids: selectedTagIds,
+          p_search: term || null,
+          p_limit: SELECT_ALL_CAP,
+          p_offset: 0,
+        });
+        if (error) {
+          toast.error(t('errorLoadContacts'));
+          return;
+        }
+        const matched = (data ?? []) as { contact: Contact }[];
+        ids = matched.map((r) => r.contact.id);
+      } else {
+        let query = supabase
+          .from('contacts')
+          .select('id')
+          .order('created_at', { ascending: false })
+          .limit(SELECT_ALL_CAP);
+        if (term) {
+          const like = `%${term}%`;
+          query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+        }
+        const { data, error } = await query;
+        if (error) {
+          toast.error(t('errorLoadContacts'));
+          return;
+        }
+        ids = (data ?? []).map((r) => r.id as string);
+      }
+
+      const next = new Set(selection.contactIds);
+      let added = 0;
+      for (const id of ids) {
+        if (!next.has(id)) {
+          next.add(id);
+          added++;
+        }
+      }
+      onSelectionChange({ ...selection, contactIds: Array.from(next) });
+
+      if (ids.length >= SELECT_ALL_CAP) {
+        toast.warning(t('toastSelectAllCapped', { count: SELECT_ALL_CAP }));
+      } else {
+        toast.success(t('toastSelectAllAdded', { count: added }));
+      }
+    } finally {
+      setSelectingAll(false);
+    }
   }
 
   async function loadSavedAudience(audienceId: string) {
@@ -309,7 +421,7 @@ export function AudiencePicker({
           <div className="flex gap-2">
             <Input
               value={contactSearch}
-              onChange={(e) => setContactSearch(e.target.value)}
+              onChange={(e) => handleContactSearchChange(e.target.value)}
               placeholder={t('searchContactsPlaceholder')}
               className="flex-1"
             />
@@ -331,7 +443,10 @@ export function AudiencePicker({
                   {selectedTagIds.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setSelectedTagIds([])}
+                      onClick={() => {
+                        setSelectedTagIds([]);
+                        setContactPage(0);
+                      }}
                       className="text-xs text-muted-foreground hover:text-foreground"
                     >
                       {t('clearAll')}
@@ -367,17 +482,39 @@ export function AudiencePicker({
               </PopoverContent>
             </Popover>
           </div>
+          {!contactsLoading && totalContacts > 0 && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t('showingContacts', {
+                  start: contactPage * CONTACTS_PAGE_SIZE + 1,
+                  end: Math.min((contactPage + 1) * CONTACTS_PAGE_SIZE, totalContacts),
+                  total: totalContacts,
+                })}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={selectAllMatching}
+                disabled={selectingAll}
+                className="h-auto shrink-0 px-2 py-1 text-xs text-primary hover:text-primary"
+              >
+                {selectingAll && <Loader2 className="size-3 animate-spin" />}
+                {t('selectAllMatching', { count: totalContacts })}
+              </Button>
+            </div>
+          )}
           {contactsLoading ? (
             <div className="flex h-32 items-center justify-center">
               <Loader2 className="size-5 animate-spin text-primary" />
             </div>
-          ) : filteredContacts.length === 0 ? (
+          ) : contacts.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               {t('noContactsFound')}
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-              {filteredContacts.map((c) => (
+              {contacts.map((c) => (
                 <label
                   key={c.id}
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
@@ -390,6 +527,33 @@ export function AudiencePicker({
                   <span className="text-xs text-muted-foreground">{c.phone}</span>
                 </label>
               ))}
+            </div>
+          )}
+          {!contactsLoading && totalContactPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                disabled={contactPage === 0}
+                onClick={() => setContactPage((p) => p - 1)}
+                className="border-border text-muted-foreground disabled:opacity-30"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {t('pageCount', { page: contactPage + 1, total: totalContactPages })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                disabled={contactPage >= totalContactPages - 1}
+                onClick={() => setContactPage((p) => p + 1)}
+                className="border-border text-muted-foreground disabled:opacity-30"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
             </div>
           )}
         </TabsContent>
