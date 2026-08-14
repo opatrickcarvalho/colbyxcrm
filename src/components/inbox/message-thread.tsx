@@ -412,28 +412,27 @@ export function MessageThread({
     const isConversationChange =
       lastFetchedConversationIdRef.current !== conversationId;
     lastFetchedConversationIdRef.current = conversationId;
+    // Captured NOW (not re-read after the `await` below) — this is the
+    // same render where the parent seeded `messages` from its cache
+    // (see InboxPageInner's messageCacheRef), so it correctly reflects
+    // "did switching here already show something instantly."
+    const hasDataAlready = messagesRef.current.length > 0;
+
+    if (isConversationChange) {
+      // Per-conversation pagination state — the cache doesn't track
+      // this, so it's unknown again on every switch regardless of
+      // whether the cache had messages. Worst case: one harmless extra
+      // "load more" fires before settling to false.
+      setHasMoreOlder(true);
+      setLoadingOlder(false);
+    }
 
     (async () => {
-      // Only blank the thread to a spinner when switching to a
-      // conversation we have nothing to show for yet — either it's
-      // never been opened this session, or the parent had no cached
-      // copy (see InboxPageInner's messageCacheRef). If the parent
-      // already seeded `messages` from that cache, this is exactly
-      // like a same-thread resync: fetch quietly in the background
-      // and swap the array in place once it resolves. This is the
-      // "instant switch back to an already-open chat" WhatsApp Web
-      // gets for free from its local-first store — here it comes from
-      // the cache instead, with a background refetch to catch
-      // anything that changed since.
-      if (isConversationChange && messagesRef.current.length === 0) {
+      if (!hasDataAlready) {
+        // Nothing to show yet — either genuinely never opened this
+        // session, or the parent had no cached copy. Blank to a
+        // spinner and fetch the last page for real.
         setLoading(true);
-      }
-
-      if (isConversationChange) {
-        // Unknown until the fetch below resolves — reset rather than
-        // carry over the previous conversation's value.
-        setHasMoreOlder(true);
-        setLoadingOlder(false);
 
         // Bounded to the last page — an unbounded fetch here doesn't
         // scale to a contact with years of history. Older messages
@@ -460,16 +459,20 @@ export function MessageThread({
 
         if (!cancelled) setLoading(false);
       } else {
-        // Same-thread resync (tab regains focus / realtime reconnects):
-        // only catch up on messages newer than the newest one already
-        // loaded, and MERGE rather than replace. A wholesale replace
-        // here would silently drop any older pages the agent scrolled
-        // into view — this is exactly the gap a resync exists to fill,
-        // not a reason to discard everything else on screen. Realtime
-        // itself (handleNewMessage in page.tsx) already appends brand
-        // new messages live; this is purely a safety net for events
-        // sent while the WS was disconnected, so dedupe-by-id is
-        // enough — no need to detect gaps more precisely than that.
+        // Either a same-thread resync (tab regains focus / realtime
+        // reconnects) OR a switch to a conversation the cache already
+        // rendered instantly — both cases just need to catch up on
+        // anything newer than what's already on screen, MERGED in
+        // rather than replacing. A wholesale replace here would
+        // silently drop any older pages the agent scrolled into view
+        // (or cause a visible flash/rescroll on a plain cache-hit
+        // switch, which is what "screen flickers on every open" was:
+        // the cache rendered instantly, then this effect immediately
+        // stomped it with a fresh last-50 fetch). Realtime itself
+        // (handleNewMessage in page.tsx) already appends brand new
+        // messages live; this is purely a safety net for events sent
+        // while the WS was disconnected, so dedupe-by-id is enough —
+        // no need to detect gaps more precisely than that.
         const newest = messagesRef.current.at(-1);
         if (!newest) return;
 
