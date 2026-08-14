@@ -576,6 +576,7 @@
       "createPipelineBtn": "파이프라인 만들기",
       "toastFailedLoadPipelines": "파이프라인을 불러오지 못했습니다",
       "toastFailedMoveDeal": "딜을 이동하지 못했습니다",
+      "toastLabelSyncFailed": "딜은 이동되었지만 WhatsApp 라벨을 동기화하지 못했습니다",
       "toastFailedCreatePipeline": "파이프라인을 만들지 못했습니다",
       "toastPipelineCreated": "파이프라인이 생성되었습니다",
       "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다."
@@ -647,6 +648,7 @@
       "saveChanges": "변경 사항 저장",
       "dragToReorder": "드래그하여 순서 변경",
       "changeColor": "색상 변경",
+      "noLabel": "라벨 없음",
       "toastFailedSave": "파이프라인을 저장하지 못했습니다",
       "toastSaved": "파이프라인이 저장되었습니다",
       "toastFailedAddStage": "단계를 추가하지 못했습니다",

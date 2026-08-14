@@ -611,7 +611,8 @@ export async function POST(
           conversation = rows?.[0] ?? null;
         }
 
-        if (conversation) {
+        if (conversation && contact) {
+          const contactId = contact.id;
           const { data: localLabels } = await db
             .from('whatsapp_labels')
             .select('id, uazapi_label_id')
@@ -655,6 +656,81 @@ export async function POST(
                 insErr.message
               );
             }
+          }
+
+          // Reverse half of the Kanban stage<->label link (migration
+          // 055; forward half is POST /api/deals/[id]/move). A
+          // stage-linked label just became part of this chat's set —
+          // follow it by moving the matching open deal. `targetIds`
+          // are already whatsapp_labels rows scoped to
+          // config.account_id (the query above filters on it), so any
+          // pipeline_stages row matching one of them is automatically
+          // account-scoped too — no extra join needed. Ambiguous
+          // matches (a pipeline with 2+ linked stages simultaneously
+          // labeled, or a contact with 0/2+ open deals in that
+          // pipeline) are skipped and logged, never guessed — same
+          // "don't invent state" rule as the rest of this handler.
+          try {
+            if (targetIds.length > 0) {
+              const { data: matchedStages } = await db
+                .from('pipeline_stages')
+                .select('id, pipeline_id')
+                .in('whatsapp_label_id', targetIds);
+
+              const stagesByPipeline = new Map<string, string[]>();
+              for (const s of matchedStages ?? []) {
+                const list = stagesByPipeline.get(s.pipeline_id) ?? [];
+                list.push(s.id);
+                stagesByPipeline.set(s.pipeline_id, list);
+              }
+
+              for (const [pipelineId, stageIds] of stagesByPipeline) {
+                if (stageIds.length !== 1) {
+                  console.warn(
+                    '[uazapi/webhook] chat_labels: ambiguous stage match, skipping',
+                    { pipelineId, count: stageIds.length }
+                  );
+                  continue;
+                }
+                const targetStageId = stageIds[0];
+
+                const { data: openDeals, error: dealsErr } = await db
+                  .from('deals')
+                  .select('id, stage_id')
+                  .eq('account_id', config.account_id)
+                  .eq('pipeline_id', pipelineId)
+                  .eq('contact_id', contactId)
+                  .eq('status', 'open');
+                if (dealsErr) {
+                  console.error(
+                    '[uazapi/webhook] chat_labels: deal lookup failed:',
+                    dealsErr.message
+                  );
+                  continue;
+                }
+                if (!openDeals || openDeals.length !== 1) {
+                  continue; // 0 or 2+ open deals in this pipeline — ambiguous
+                }
+                const deal = openDeals[0];
+                if (deal.stage_id === targetStageId) continue;
+
+                const { error: moveErr } = await db
+                  .from('deals')
+                  .update({ stage_id: targetStageId })
+                  .eq('id', deal.id);
+                if (moveErr) {
+                  console.error(
+                    '[uazapi/webhook] chat_labels: deal move failed:',
+                    moveErr.message
+                  );
+                }
+              }
+            }
+          } catch (err) {
+            console.error(
+              '[uazapi/webhook] chat_labels: reverse stage sync failed:',
+              err instanceof Error ? err.message : err
+            );
           }
         }
       }

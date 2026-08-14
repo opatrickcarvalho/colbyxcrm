@@ -220,16 +220,27 @@ export default function PipelinesPage() {
       setDeals((prev) =>
         prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
       );
-      const { error } = await supabase
-        .from("deals")
-        .update({ stage_id: newStageId })
-        .eq("id", dealId);
-      if (error) {
+      // Goes through the server (not a direct Supabase update) because
+      // moving a deal also best-effort syncs the linked WhatsApp label
+      // via UAZAPI (migration 055) — that needs the decrypted instance
+      // token, which never reaches the browser.
+      const res = await fetch(`/api/deals/${dealId}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage_id: newStageId }),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
         toast.error(t("toastFailedMoveDeal"));
         refreshDeals();
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (data?.labelSync === "failed") {
+        toast.warning(t("toastLabelSyncFailed"));
       }
     },
-    [supabase, refreshDeals, t],
+    [refreshDeals, t],
   );
 
   const handleAddDeal = useCallback(

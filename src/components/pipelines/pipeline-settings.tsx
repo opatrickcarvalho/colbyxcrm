@@ -17,7 +17,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage } from "@/types";
+import type { Pipeline, PipelineStage, WhatsAppLabel } from "@/types";
+import { whatsappLabelColor } from "@/lib/whatsapp/label-colors";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -80,6 +88,13 @@ export function PipelineSettings({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // WhatsApp Business labels, for the per-stage link (migration 055).
+  // `unavailable` mirrors LabelsDropdown's (inbox) convention: the
+  // account isn't UAZAPI-connected, so the picker is hidden entirely
+  // rather than shown empty/disabled — pipelines work unchanged.
+  const [waLabels, setWaLabels] = useState<WhatsAppLabel[]>([]);
+  const [waLabelsUnavailable, setWaLabelsUnavailable] = useState(false);
+
   // Reset form state when the dialog opens or its prop inputs change
   // — legitimate prop-driven sync.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -90,6 +105,25 @@ export function PipelineSettings({
     setShowDeleteConfirm(false);
   }, [open, pipeline, stages]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/whatsapp/labels").catch(() => null);
+      if (cancelled || !res) return;
+      const data = (await res.json().catch(() => null)) as {
+        labels?: WhatsAppLabel[];
+        unavailable?: boolean;
+      } | null;
+      if (cancelled) return;
+      if (data?.unavailable) setWaLabelsUnavailable(true);
+      setWaLabels(data?.labels ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -116,6 +150,7 @@ export function PipelineSettings({
       name: s.name,
       color: s.color,
       position: i,
+      whatsapp_label_id: s.whatsapp_label_id ?? null,
     }));
 
     const [renameRes, stagesRes] = await Promise.all([
@@ -274,8 +309,15 @@ export function PipelineSettings({
                             updated[index] = { ...updated[index], color: v };
                             setLocalStages(updated);
                           }}
+                          onLabelChange={(v) => {
+                            const updated = [...localStages];
+                            updated[index] = { ...updated[index], whatsapp_label_id: v };
+                            setLocalStages(updated);
+                          }}
                           onRemove={() => handleRemoveStage(stage.id)}
                           colors={STAGE_COLORS}
+                          waLabels={waLabels}
+                          waLabelsUnavailable={waLabelsUnavailable}
                           t={t}
                         />
                       ))}
@@ -364,19 +406,27 @@ export function PipelineSettings({
   );
 }
 
+const NO_LABEL_VALUE = "__none";
+
 function SortableStageRow({
   stage,
   onNameChange,
   onColorChange,
+  onLabelChange,
   onRemove,
   colors,
+  waLabels,
+  waLabelsUnavailable,
   t,
 }: {
   stage: PipelineStage;
   onNameChange: (v: string) => void;
   onColorChange: (v: string) => void;
+  onLabelChange: (v: string | null) => void;
   onRemove: () => void;
   colors: string[];
+  waLabels: WhatsAppLabel[];
+  waLabelsUnavailable: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   t: any;
 }) {
@@ -410,6 +460,34 @@ function SortableStageRow({
         onChange={(e) => onNameChange(e.target.value)}
         className="h-7 flex-1 border-transparent bg-transparent text-sm text-foreground focus:border-border"
       />
+      {!waLabelsUnavailable && (
+        <Select
+          value={stage.whatsapp_label_id ?? NO_LABEL_VALUE}
+          onValueChange={(v) =>
+            onLabelChange(v === NO_LABEL_VALUE ? null : v)
+          }
+        >
+          <SelectTrigger size="sm" className="w-32 shrink-0 text-xs">
+            <SelectValue placeholder={t("noLabel")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_LABEL_VALUE}>{t("noLabel")}</SelectItem>
+            {waLabels.map((label) => (
+              <SelectItem key={label.id} value={label.id}>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: whatsappLabelColor(label.color_code),
+                    }}
+                  />
+                  {label.name}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"

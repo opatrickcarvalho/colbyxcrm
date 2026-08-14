@@ -576,6 +576,7 @@
       "createPipelineBtn": "Criar funil",
       "toastFailedLoadPipelines": "Falha ao carregar funis",
       "toastFailedMoveDeal": "Falha ao mover negócio",
+      "toastLabelSyncFailed": "Negócio movido, mas não foi possível sincronizar a etiqueta do WhatsApp",
       "toastFailedCreatePipeline": "Falha ao criar funil",
       "toastPipelineCreated": "Funil criado",
       "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."
@@ -647,6 +648,7 @@
       "saveChanges": "Salvar alterações",
       "dragToReorder": "Arraste para reordenar",
       "changeColor": "Mudar cor",
+      "noLabel": "Sem etiqueta",
       "toastFailedSave": "Falha ao salvar funil",
       "toastSaved": "Funil salvo",
       "toastFailedAddStage": "Falha ao adicionar etapa",

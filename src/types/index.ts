@@ -411,6 +411,8 @@ export interface PipelineStage {
   position: number;
   color: string;
   created_at: string;
+  /** WhatsApp Business label this stage keeps in sync with (migration 055). */
+  whatsapp_label_id: string | null;
 }
 
 export type DealStatus = 'open' | 'won' | 'lost';

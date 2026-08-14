@@ -576,6 +576,7 @@
       "createPipelineBtn": "Create Pipeline",
       "toastFailedLoadPipelines": "Failed to load pipelines",
       "toastFailedMoveDeal": "Failed to move deal",
+      "toastLabelSyncFailed": "Deal moved, but the WhatsApp label couldn't be synced",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
       "toastNotLinkedToAccount": "Your profile is not linked to an account."
@@ -647,6 +648,7 @@
       "saveChanges": "Save Changes",
       "dragToReorder": "Drag to reorder",
       "changeColor": "Change color",
+      "noLabel": "No label",
       "toastFailedSave": "Failed to save pipeline",
       "toastSaved": "Pipeline saved",
       "toastFailedAddStage": "Failed to add stage",
