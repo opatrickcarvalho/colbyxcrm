@@ -1453,6 +1453,15 @@ function LabelsDropdown({
               placeholder={t('newLabelPlaceholder')}
               className="border-border bg-background h-7 rounded-md border px-2 text-xs"
               onKeyDown={(e) => {
+                // Base UI's Menu attaches a type-ahead handler to the
+                // popup that calls preventDefault() on every
+                // single-character keydown (to jump-search menu items),
+                // with no awareness that focus is inside a real text
+                // input — left unstopped, every keystroke gets eaten
+                // before it reaches this field. Stop it from bubbling
+                // past this input; Enter/Escape are handled explicitly
+                // below regardless.
+                e.stopPropagation();
                 if (e.key === 'Enter') createLabel();
                 if (e.key === 'Escape') setCreating(false);
               }}
@@ -1481,6 +1490,7 @@ function LabelsDropdown({
           </div>
         ) : (
           <DropdownMenuItem
+            closeOnClick={false}
             onClick={() => setCreating(true)}
             className="text-primary text-sm"
           >
