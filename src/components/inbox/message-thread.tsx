@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { format, isToday, isYesterday, differenceInHours } from 'date-fns';
 import { useTranslations } from 'next-intl';
+import { ContactAvatar } from '@/components/inbox/contact-avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -1015,17 +1016,12 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium overflow-hidden">
-            {contact.avatar_url ? (
-              <img
-                src={contact.avatar_url}
-                alt={displayName}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              displayName.charAt(0).toUpperCase()
-            )}
-          </div>
+          <ContactAvatar
+            avatarUrl={contact.avatar_url}
+            name={displayName}
+            wrapperClassName="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium overflow-hidden"
+            imgClassName="h-full w-full object-cover"
+          />
           <div className="min-w-0">
             <h2 className="text-foreground truncate text-sm font-semibold">
               {displayName}

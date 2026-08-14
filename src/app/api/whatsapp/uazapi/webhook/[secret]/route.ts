@@ -12,6 +12,7 @@ import {
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
 import { jidToPhone } from '@/lib/whatsapp/phone-utils';
+import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -1007,10 +1008,21 @@ export async function POST(
             decrypt(config.uazapi_instance_token),
             phone
           );
-          if (fetchedAvatarUrl) {
+          // uazapi's URL is on WhatsApp's own CDN and expires (see
+          // src/lib/whatsapp/rehost-avatar.ts) — download it now,
+          // while it's fresh, and store our own permanent copy
+          // instead of the ephemeral one.
+          const permanentAvatarUrl = fetchedAvatarUrl
+            ? await rehostAvatar({
+                remoteUrl: fetchedAvatarUrl,
+                accountId: config.account_id,
+                contactId,
+              })
+            : null;
+          if (permanentAvatarUrl) {
             await db
               .from('contacts')
-              .update({ avatar_url: fetchedAvatarUrl })
+              .update({ avatar_url: permanentAvatarUrl })
               .eq('id', contactId);
           }
         } catch (err) {

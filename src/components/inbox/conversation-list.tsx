@@ -15,6 +15,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
+import { ContactAvatar } from '@/components/inbox/contact-avatar';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -542,7 +543,6 @@ function ConversationItem({
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t('unknown');
-  const initials = displayName.charAt(0).toUpperCase();
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -583,17 +583,12 @@ function ConversationItem({
           )}
         >
           {/* Avatar */}
-          <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium">
-            {contact?.avatar_url ? (
-              <img
-                src={contact.avatar_url}
-                alt={displayName}
-                className="h-10 w-10 rounded-full object-cover"
-              />
-            ) : (
-              initials
-            )}
-          </div>
+          <ContactAvatar
+            avatarUrl={contact?.avatar_url}
+            name={displayName}
+            wrapperClassName="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium"
+            imgClassName="h-10 w-10 rounded-full object-cover"
+          />
 
           {/* Content */}
           <div className="min-w-0 flex-1">

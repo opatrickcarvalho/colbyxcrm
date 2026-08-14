@@ -89,12 +89,21 @@ export async function POST() {
 
     for (let i = 0; i < toInsert.length; i += chunkSize) {
       const chunk = toInsert.slice(i, i + chunkSize);
+      // Deliberately NOT persisting `c.imageUrl` here: it's a
+      // pre-signed WhatsApp CDN URL that expires (see
+      // src/lib/whatsapp/rehost-avatar.ts), and re-hosting it for
+      // potentially hundreds of contacts inline in this request would
+      // be slow and failure-prone. The inbound webhook's own backfill
+      // already re-fetches and permanently re-hosts the photo the
+      // first time any message touches a contact with no avatar_url —
+      // this just lets that happen naturally instead of storing a
+      // URL that's doomed to 404 later.
       const rows = chunk.map((c: UazapiChatContact) => ({
         account_id: accountId,
         user_id: userId,
         phone: c.phone,
         name: c.name,
-        avatar_url: c.imageUrl || null,
+        avatar_url: null,
       }));
 
       const { data, error } = await supabase
