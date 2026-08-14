@@ -65,6 +65,13 @@
   "ModeToggle": {
     "switchMode": "Mudar para o modo {mode}"
   },
+  "AccountAccess": {
+    "unlinkedTitle": "Este usuário não está vinculado a uma conta",
+    "unlinkedBody": "Nada do que você alterar será salvo enquanto isso não for resolvido — o banco de dados rejeita toda escrita de um usuário sem conta ou função definida. Se você foi convidado para uma equipe, peça ao proprietário para reenviar o convite. Em uma instalação self-hosted, verifique se a migração de bootstrap da conta rodou para este usuário.",
+    "errorTitle": "Não foi possível carregar suas permissões",
+    "errorBody": "A função da sua conta não carregou, então toda ação é tratada como somente leitura e as alterações não serão salvas. Verifique sua conexão e tente novamente.",
+    "retry": "Tentar novamente"
+  },
   "Dashboard": {
     "page": {
       "title": "Painel",
@@ -1325,6 +1332,7 @@
         "no": "Não"
       },
       "addStep": "Adicionar etapa",
+      "delete": "Excluir",
       "config": {
         "messageText": "Texto da mensagem",
         "placeholderMessageText": "Olá! Obrigado por entrar em contato…",

@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { useBillingStatus } from "@/hooks/use-billing-status";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 
@@ -67,7 +68,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <ImpersonationBanner />
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 relative">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+          {/* Above every page: writes are being rejected and here's why.
+              Renders nothing unless the account/role failed to resolve. */}
+          <AccountAccessAlert />
+          {children}
+        </main>
       </div>
     </div>
   );
