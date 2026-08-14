@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   CreditCard,
+  Palette,
   Settings,
   ShieldAlert,
   Users,
@@ -59,6 +60,13 @@ export default async function AdminLayout({
               >
                 <Settings className="h-4 w-4" />
                 {t('navSettings')}
+              </Link>
+              <Link
+                href="/admin/branding"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+              >
+                <Palette className="h-4 w-4" />
+                {t('navBranding')}
               </Link>
             </nav>
           </div>

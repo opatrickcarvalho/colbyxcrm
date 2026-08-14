@@ -2183,7 +2183,8 @@
       "backToCrm": "CRM으로 돌아가기",
       "navAccounts": "계정",
       "navPlans": "요금제",
-      "navSettings": "설정"
+      "navSettings": "설정",
+      "navBranding": "브랜딩"
     },
     "accounts": {
       "title": "계정",
@@ -2331,6 +2332,24 @@
       "confirmRegenerateDesc": "현재 토큰은 즉시 작동을 멈춥니다. 웹훅이 다시 수락되려면 Asaas 대시보드에 새 값을 붙여넣어야 합니다.",
       "confirmRegenerateConfirm": "네, 새 토큰을 생성합니다",
       "confirmRegenerateCancel": "취소"
+    },
+    "branding": {
+      "title": "브랜딩",
+      "subtitle": "플랫폼 전체에 표시되는 이름, 아이콘, 로고입니다.",
+      "loadError": "브랜딩 설정을 불러오지 못했습니다.",
+      "actionError": "작업에 실패했습니다.",
+      "savedToast": "브랜딩이 저장되었습니다.",
+      "fieldSiteName": "사이트 이름",
+      "fieldSiteNameHint": "브라우저 탭, 사이드바, 로그인 화면에 표시됩니다. 비워두면 기본값(\"wacrm\")을 사용합니다.",
+      "fieldIcon": "아이콘 (파비콘)",
+      "fieldIconHint": "브라우저 탭에 표시됩니다. 정사각형 이미지, 최소 32×32px을 권장합니다.",
+      "fieldLogo": "로고",
+      "fieldLogoHint": "사이드바와 로그인 화면의 아이콘을 대체합니다. 정사각형 이미지를 권장합니다.",
+      "upload": "업로드",
+      "remove": "제거",
+      "unsupportedImage": "지원하지 않는 이미지 형식입니다.",
+      "imageTooLarge": "이미지가 너무 큽니다 (최대 2MB).",
+      "save": "저장"
     }
   },
   "Billing": {

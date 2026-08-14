@@ -2183,7 +2183,8 @@
       "backToCrm": "Voltar ao CRM",
       "navAccounts": "Contas",
       "navPlans": "Planos",
-      "navSettings": "Config"
+      "navSettings": "Config",
+      "navBranding": "Marca"
     },
     "accounts": {
       "title": "Contas",
@@ -2331,6 +2332,24 @@
       "confirmRegenerateDesc": "O token atual para de funcionar imediatamente. Você precisa colar o novo valor no painel da Asaas antes que os webhooks voltem a ser aceitos.",
       "confirmRegenerateConfirm": "Sim, gerar novo token",
       "confirmRegenerateCancel": "Cancelar"
+    },
+    "branding": {
+      "title": "Marca",
+      "subtitle": "O nome, ícone e logo exibidos em toda a plataforma.",
+      "loadError": "Falha ao carregar as configurações de marca.",
+      "actionError": "A ação falhou.",
+      "savedToast": "Marca salva.",
+      "fieldSiteName": "Nome do site",
+      "fieldSiteNameHint": "Exibido na aba do navegador, na barra lateral e na tela de login. Deixe em branco para usar o padrão (\"wacrm\").",
+      "fieldIcon": "Ícone (favicon)",
+      "fieldIconHint": "Exibido na aba do navegador. Recomenda-se uma imagem quadrada, com pelo menos 32×32px.",
+      "fieldLogo": "Logo",
+      "fieldLogoHint": "Substitui o ícone na barra lateral e na tela de login. Recomenda-se uma imagem quadrada.",
+      "upload": "Enviar",
+      "remove": "Remover",
+      "unsupportedImage": "Tipo de imagem não suportado.",
+      "imageTooLarge": "Imagem muito grande (máx. 2MB).",
+      "save": "Salvar"
     }
   },
   "Billing": {

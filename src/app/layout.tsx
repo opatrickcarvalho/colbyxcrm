@@ -14,31 +14,41 @@ import {
   STORAGE_KEY,
   THEME_IDS,
 } from "@/lib/themes";
+import { getBrandingSettings } from "@/lib/branding/get-branding";
 
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "wacrm",
-    template: "%s — wacrm",
-  },
-  description: "Self-hostable CRM template for WhatsApp.",
-  robots: {
-    index: false,
-    follow: false,
-  },
-  icons: {
-    icon: [{ url: "/icon" }],
-  },
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-};
+// Dynamic so a superadmin-configured site name (see
+// src/lib/branding/get-branding.ts) shows up in the tab title
+// without a redeploy. Falls back to the original "wacrm" default
+// when branding isn't configured.
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getBrandingSettings();
+  const name = siteName ?? "wacrm";
+
+  return {
+    title: {
+      default: name,
+      template: `%s — ${name}`,
+    },
+    description: "Self-hostable CRM template for WhatsApp.",
+    robots: {
+      index: false,
+      follow: false,
+    },
+    icons: {
+      icon: [{ url: "/icon" }],
+    },
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#020617",

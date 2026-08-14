@@ -112,9 +112,11 @@ interface SidebarProps {
 }
 
 import { useTranslations } from 'next-intl';
+import { useBranding } from '@/components/branding/branding-context';
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations('Sidebar');
+  const branding = useBranding();
   const pathname = usePathname();
   const { profile, profileLoading, account, accountRole, signOut } = useAuth();
   const totalUnread = useTotalUnread();
@@ -186,11 +188,19 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             close button is hidden since the sidebar is always-visible. */}
         <div className="border-border flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-lg">
-              <MessageSquare className="h-4 w-4" />
-            </div>
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt=""
+                className="h-8 w-8 rounded-lg object-cover"
+              />
+            ) : (
+              <div className="bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-lg">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+            )}
             <span className="text-foreground text-sm font-semibold">
-              {t('title')}
+              {branding.siteName ?? t('title')}
             </span>
           </Link>
           <button

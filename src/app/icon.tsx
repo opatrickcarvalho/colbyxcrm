@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { getBrandingIconBytes } from "@/lib/branding/get-branding";
 
 // Replaces the default Next.js favicon with the brand mark — Hostinger
 // violet rounded square + white chat-square glyph — matching the
@@ -7,12 +8,26 @@ import { ImageResponse } from "next/og";
 //
 // This route takes precedence over src/app/favicon.ico, which is the
 // Next.js default and can stay on disk harmlessly (or be removed).
+//
+// `dynamic = "force-dynamic"` opts this out of Next's default static
+// caching for icon route handlers, so a superadmin-uploaded favicon
+// (see src/lib/branding/get-branding.ts) is picked up without a
+// redeploy — bounded by that helper's own 60s in-process cache, so
+// this doesn't add a DB/Storage round trip to every favicon request.
 
 export const runtime = "edge";
+export const dynamic = "force-dynamic";
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-export default function Icon() {
+export default async function Icon() {
+  const custom = await getBrandingIconBytes();
+  if (custom) {
+    return new Response(custom.bytes, {
+      headers: { "Content-Type": custom.contentType },
+    });
+  }
+
   return new ImageResponse(
     (
       <div

@@ -2183,7 +2183,8 @@
       "backToCrm": "Back to CRM",
       "navAccounts": "Accounts",
       "navPlans": "Plans",
-      "navSettings": "Settings"
+      "navSettings": "Settings",
+      "navBranding": "Branding"
     },
     "accounts": {
       "title": "Accounts",
@@ -2331,6 +2332,24 @@
       "confirmRegenerateDesc": "The current token stops working immediately. You'll need to paste the new value into the Asaas dashboard before webhooks are accepted again.",
       "confirmRegenerateConfirm": "Yes, generate a new token",
       "confirmRegenerateCancel": "Cancel"
+    },
+    "branding": {
+      "title": "Branding",
+      "subtitle": "The name, icon and logo shown across the whole platform.",
+      "loadError": "Failed to load branding settings.",
+      "actionError": "Action failed.",
+      "savedToast": "Branding saved.",
+      "fieldSiteName": "Site name",
+      "fieldSiteNameHint": "Shown in the browser tab, sidebar and login screen. Leave blank to use the default (\"wacrm\").",
+      "fieldIcon": "Icon (favicon)",
+      "fieldIconHint": "Shown in the browser tab. Square image recommended, at least 32×32px.",
+      "fieldLogo": "Logo",
+      "fieldLogoHint": "Replaces the icon in the sidebar and login screen. Square image recommended.",
+      "upload": "Upload",
+      "remove": "Remove",
+      "unsupportedImage": "Unsupported image type.",
+      "imageTooLarge": "Image is too large (max 2MB).",
+      "save": "Save"
     }
   },
   "Billing": {
