@@ -347,6 +347,7 @@
       "subtitleZero": "Manage your contact list.",
       "customFieldsBtn": "Custom fields",
       "importBtn": "Import",
+      "extractBtn": "Extract from Inbox",
       "addContactBtn": "Add Contact",
       "searchPlaceholder": "Search by name, phone, or email...",
       "filterByTags": "Filter by tags",
@@ -521,6 +522,22 @@
       "toastFailed": "{count} contact failed to import",
       "toastFailed_plural": "{count} contacts failed to import",
       "toastError": "Import failed"
+    },
+    "extractModal": {
+      "title": "Extract Contacts from Inbox",
+      "desc": "Pull every WhatsApp number that has exchanged a message with this account's connected number into your contact list. Numbers already saved as contacts are skipped automatically. Requires a UAZAPI-connected number.",
+      "startBtn": "Start extraction",
+      "extracting": "Extracting contacts from WhatsApp…",
+      "extractComplete": "Extraction complete",
+      "resultFound": "{count} chats found",
+      "resultImported": "{count} imported",
+      "resultSkipped": "{count} already existed",
+      "resultFailed": "{count} failed",
+      "cancel": "Cancel",
+      "close": "Close",
+      "toastImported": "{count} contacts imported from WhatsApp",
+      "toastNoneFound": "No new contacts to import — everyone who's messaged you is already in your contact list.",
+      "toastError": "Failed to extract contacts"
     },
     "customFields": {
       "title": "Custom fields",

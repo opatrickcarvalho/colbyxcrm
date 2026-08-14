@@ -102,3 +102,39 @@ export function phoneVariants(sanitized: string): string[] {
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)
 }
+
+/**
+ * uazapi identifies people by JID, and two address families exist that
+ * are NOT interchangeable:
+ *
+ *   `5511999999999@s.whatsapp.net` (or `@c.us`) — a real phone number
+ *      (a "PN"). This is what the CRM stores and sends to.
+ *   `221234567890123@lid` — WhatsApp's newer opaque "linked id". Its
+ *      digits are NOT a phone number and belong to nobody.
+ *
+ * The domain check is load-bearing. Without it (splitting on `@` and
+ * ignoring the domain) a LID's digits sail through the 7-15 digit test
+ * and become a plausible-looking `+221234...` phone — which mints a
+ * phantom contact and a second conversation for someone who already
+ * exists under their real number.
+ *
+ * Everything downstream — contact matching, the send path — works in
+ * E.164, so strip the domain and restore the leading `+`.
+ */
+export function jidToPhone(jid: string | undefined): string | null {
+  if (!jid) return null
+  const [local, domain] = jid.split('@')
+  // A bare number (no domain at all) is still accepted — some payloads
+  // carry one — but any explicit non-PN domain (@lid, @g.us,
+  // @newsletter, @broadcast) is refused outright.
+  if (
+    domain !== undefined &&
+    domain !== 's.whatsapp.net' &&
+    domain !== 'c.us'
+  ) {
+    return null
+  }
+  const digits = local?.split(':')[0]
+  if (!digits || !/^\d{7,15}$/.test(digits)) return null
+  return `+${digits}`
+}

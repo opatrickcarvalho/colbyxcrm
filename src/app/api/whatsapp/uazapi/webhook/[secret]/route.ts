@@ -11,6 +11,7 @@ import {
 } from '@/lib/whatsapp/providers/uazapi';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
+import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -156,42 +157,8 @@ function toMessagesStatus(status: string | number | undefined): string | null {
   }
 }
 
-/**
- * uazapi identifies people by JID, and two address families exist that
- * are NOT interchangeable:
- *
- *   `5511999999999@s.whatsapp.net` (or `@c.us`) — a real phone number
- *      (a "PN"). This is what the CRM stores and sends to.
- *   `221234567890123@lid` — WhatsApp's newer opaque "linked id". Its
- *      digits are NOT a phone number and belong to nobody.
- *
- * The domain check is load-bearing. Without it (splitting on `@` and
- * ignoring the domain, as this did before) a LID's digits sail through
- * the 7-15 digit test and become a plausible-looking `+221234...`
- * phone — which mints a phantom contact and a second conversation for
- * someone who already exists under their real number. That is the
- * duplicate thread that appears on send.
- *
- * Everything downstream — contact matching, the send path — works in
- * E.164, so strip the domain and restore the leading `+`.
- */
-function jidToPhone(jid: string | undefined): string | null {
-  if (!jid) return null;
-  const [local, domain] = jid.split('@');
-  // A bare number (no domain at all) is still accepted — some payloads
-  // carry one — but any explicit non-PN domain (@lid, @g.us,
-  // @newsletter, @broadcast) is refused outright.
-  if (
-    domain !== undefined &&
-    domain !== 's.whatsapp.net' &&
-    domain !== 'c.us'
-  ) {
-    return null;
-  }
-  const digits = local?.split(':')[0];
-  if (!digits || !/^\d{7,15}$/.test(digits)) return null;
-  return `+${digits}`;
-}
+// jidToPhone lives in @/lib/whatsapp/phone-utils — shared with the
+// contact-extraction path, which needs the exact same PN-vs-LID rules.
 
 /**
  * Map uazapi's message types onto the `content_type` values the

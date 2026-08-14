@@ -202,6 +202,13 @@ export const RATE_LIMITS = {
    *  the individual sends inside a campaign is handled separately by
    *  the account's configurable `delay_seconds`, not by this bucket. */
   groupBroadcastCreate: { limit: 10, windowMs: 60_000 },
+  /** Inbox contact extraction (pull every WhatsApp chat in as a
+   *  contact), per user. Each call already paginates through the
+   *  account's whole chat list against uazapi, so this bounds repeat
+   *  clicks rather than any per-recipient cost — 5/min is plenty for a
+   *  human re-running it after connecting new numbers while still
+   *  bounding a runaway script hammering uazapi's `/chat/find`. */
+  contactsExtract: { limit: 5, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

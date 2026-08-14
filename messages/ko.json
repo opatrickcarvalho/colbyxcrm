@@ -347,6 +347,7 @@
       "subtitleZero": "연락처 목록을 관리하세요.",
       "customFieldsBtn": "커스텀 필드",
       "importBtn": "가져오기",
+      "extractBtn": "인박스에서 추출",
       "addContactBtn": "연락처 추가",
       "searchPlaceholder": "이름, 전화번호, 이메일로 검색...",
       "filterByTags": "태그로 필터링",
@@ -521,6 +522,22 @@
       "toastFailed": "연락처 {count}개를 가져오지 못했습니다",
       "toastFailed_plural": "연락처 {count}개를 가져오지 못했습니다",
       "toastError": "가져오기 실패"
+    },
+    "extractModal": {
+      "title": "인박스에서 연락처 추출",
+      "desc": "이 계정에 연결된 WhatsApp 번호와 메시지를 주고받은 모든 번호를 연락처 목록으로 가져옵니다. 이미 연락처로 등록된 번호는 자동으로 건너뜁니다. UAZAPI로 연결된 번호가 필요합니다.",
+      "startBtn": "추출 시작",
+      "extracting": "WhatsApp에서 연락처를 추출하는 중…",
+      "extractComplete": "추출 완료",
+      "resultFound": "{count}개 채팅 발견",
+      "resultImported": "{count}개 가져옴",
+      "resultSkipped": "{count}개 이미 존재함",
+      "resultFailed": "{count}개 실패",
+      "cancel": "취소",
+      "close": "닫기",
+      "toastImported": "WhatsApp에서 연락처 {count}개를 가져왔습니다",
+      "toastNoneFound": "가져올 새 연락처가 없습니다 — 메시지를 보낸 모든 사람이 이미 연락처 목록에 있습니다.",
+      "toastError": "연락처 추출 실패"
     },
     "customFields": {
       "title": "커스텀 필드",

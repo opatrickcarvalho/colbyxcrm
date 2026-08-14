@@ -347,6 +347,7 @@
       "subtitleZero": "Gerencie sua lista de contatos.",
       "customFieldsBtn": "Campos personalizados",
       "importBtn": "Importar",
+      "extractBtn": "Extrair do Inbox",
       "addContactBtn": "Adicionar contato",
       "searchPlaceholder": "Buscar por nome, telefone ou e-mail...",
       "filterByTags": "Filtrar por etiquetas",
@@ -521,6 +522,22 @@
       "toastFailed": "{count} contato falhou ao importar",
       "toastFailed_plural": "{count} contatos falharam ao importar",
       "toastError": "Falha na importação"
+    },
+    "extractModal": {
+      "title": "Extrair contatos do Inbox",
+      "desc": "Traga para sua lista de contatos todos os números do WhatsApp que já trocaram mensagem com o número conectado desta conta. Números que já são contatos são ignorados automaticamente. Requer um número conectado via UAZAPI.",
+      "startBtn": "Iniciar extração",
+      "extracting": "Extraindo contatos do WhatsApp…",
+      "extractComplete": "Extração concluída",
+      "resultFound": "{count} conversas encontradas",
+      "resultImported": "{count} importados",
+      "resultSkipped": "{count} já existiam",
+      "resultFailed": "{count} falharam",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "toastImported": "{count} contatos importados do WhatsApp",
+      "toastNoneFound": "Nenhum contato novo para importar — todos que já mandaram mensagem já estão na sua lista.",
+      "toastError": "Falha ao extrair contatos"
     },
     "customFields": {
       "title": "Campos personalizados",

@@ -39,6 +39,7 @@ import {
   Search,
   Plus,
   Upload,
+  Inbox,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -53,6 +54,7 @@ import {
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
+import { ExtractWhatsappModal } from '@/components/contacts/extract-whatsapp-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
@@ -85,6 +87,7 @@ export default function ContactsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailContactId, setDetailContactId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
   const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
@@ -360,6 +363,16 @@ export default function ContactsPage() {
               {t('customFieldsBtn')}
             </Button>
           )}
+          <GatedButton
+            variant="outline"
+            canAct={canEdit}
+            gateReason="add or import contacts"
+            onClick={() => setExtractOpen(true)}
+            className="border-border text-muted-foreground hover:bg-muted"
+          >
+            <Inbox className="size-4" />
+            {t('extractBtn')}
+          </GatedButton>
           <GatedButton
             variant="outline"
             canAct={canEdit}
@@ -757,6 +770,13 @@ export default function ContactsPage() {
       <ImportModal
         open={importOpen}
         onOpenChange={setImportOpen}
+        onImported={fetchContacts}
+      />
+
+      {/* Extract from WhatsApp Inbox Modal */}
+      <ExtractWhatsappModal
+        open={extractOpen}
+        onOpenChange={setExtractOpen}
         onImported={fetchContacts}
       />
 
