@@ -2,31 +2,51 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { decrypt } from '@/lib/whatsapp/encryption';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 import { ensureWebhookRegistered } from '@/lib/whatsapp/uazapi-webhook-sync';
+import { getInstancePrivacy, setInstancePresence } from '@/lib/whatsapp/providers';
 
 /**
  * GET /api/whatsapp/uazapi/webhook-sync/cron
  *
- * Periodic webhook-subscription health check for EVERY connected UAZAPI
- * account, not just the one currently being paired.
+ * Periodic health check for EVERY connected UAZAPI account, not just
+ * the one currently being paired, covering the two independent ways
+ * delivery/read ticks (`messages_update` webhooks) silently stop:
  *
- * `ensureWebhookRegistered()` (uazapi-webhook-sync.ts) previously only
- * ran from `GET /api/whatsapp/uazapi/status`, which is polled by the QR
- * screen while an operator is actively pairing — an account that paired
- * before an event-list change (`WEBHOOK_EVENTS` /
- * `WEBHOOK_EXCLUDE_MESSAGES` in providers/uazapi.ts) has no reason to
- * ever revisit that screen again, so its subscription can drift forever
- * with no error anywhere: inbound messages keep working, but delivery/
- * read ticks silently stop advancing past 'sent'. That is exactly what
- * happened here — see the investigation this route was added to fix.
+ *   1. Webhook subscription drift — `ensureWebhookRegistered()`
+ *      (uazapi-webhook-sync.ts) previously only ran from `GET
+ *      /api/whatsapp/uazapi/status`, which is polled by the QR screen
+ *      while an operator is actively pairing. An account that paired
+ *      before an event-list change never revisits that screen, so its
+ *      subscription can drift forever with no error anywhere: inbound
+ *      messages keep working, but ticks stop advancing past 'sent'.
+ *   2. Presence — per `setInstancePresence`'s own doc comment
+ *      (providers/uazapi.ts), when the instance is the only active
+ *      device and its presence is 'unavailable', `messages_update`
+ *      webhooks stop being sent OR received entirely — not a
+ *      subscription problem at all, WhatsApp just doesn't emit them.
+ *      It's normally set once right after pairing; re-asserting
+ *      'available' every run is a cheap, idempotent guard against it
+ *      drifting back (phone battery saver, WhatsApp itself flipping
+ *      it) with no code-visible symptom besides ticks going quiet.
+ *      Confirmed against live data as the actual cause here: fixing
+ *      (1) alone left every one of 1,511 outbound messages still at
+ *      delivered_at/read_at = null.
+ *
+ * `readreceipts` (also read here, logged only) is a THIRD, separate
+ * failure mode this cannot fix: WhatsApp's read receipts are
+ * reciprocal, so an account with them turned off in its own privacy
+ * settings never gets ticks past 'delivered' no matter how healthy
+ * the webhook/presence side is. `setInstancePrivacy` is explicitly
+ * gated on an explicit user action elsewhere in this codebase — it
+ * must never be flipped silently — so this only surfaces the value
+ * for a human to check, it does not change it.
  *
  * Mirrors the other cron routes (shared `x-cron-secret`,
  * `supabaseAdmin()`), and is meant to be pinged by the same pg_cron job
  * that drains the work queues (migration 056 adds this path to
- * `drain_wacrm_queues()`). `ensureWebhookRegistered` is fingerprint-
- * gated internally, so a steady-state minute-by-minute ping costs one
- * cheap string comparison per connected account, not a re-registration.
+ * `drain_wacrm_queues()`).
  */
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET;
@@ -56,15 +76,42 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!configs || configs.length === 0) {
-    return NextResponse.json({ checked: 0, reregistered: 0 });
+    return NextResponse.json({ checked: 0, reregistered: 0, presenceFixed: 0 });
   }
 
   const origin = resolvePublicBaseUrl(request, 'uazapi/webhook-sync/cron');
   let reregistered = 0;
+  let presenceFixed = 0;
+  const readReceipts: Record<string, string | undefined> = {};
+
   for (const config of configs) {
-    const result = await ensureWebhookRegistered(admin, config, origin);
-    if (result.reregistered) reregistered++;
+    const webhookResult = await ensureWebhookRegistered(admin, config, origin);
+    if (webhookResult.reregistered) reregistered++;
+
+    if (!config.uazapi_host || !config.uazapi_instance_token) continue;
+    try {
+      const token = decrypt(config.uazapi_instance_token);
+      // Idempotent and cheap — see the doc comment above for why this
+      // runs unconditionally on every tick rather than being fingerprint-
+      // gated like the webhook registration.
+      await setInstancePresence(config.uazapi_host, token, 'available');
+      presenceFixed++;
+
+      const privacy = await getInstancePrivacy(config.uazapi_host, token);
+      readReceipts[config.id] = privacy.readreceipts;
+    } catch (err) {
+      console.error(
+        '[uazapi/webhook-sync/cron] presence/privacy check failed:',
+        config.id,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
-  return NextResponse.json({ checked: configs.length, reregistered });
+  return NextResponse.json({
+    checked: configs.length,
+    reregistered,
+    presenceFixed,
+    readReceipts,
+  });
 }
