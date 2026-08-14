@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -614,7 +615,17 @@ export default function ContactsPage() {
                     />
                   </TableCell>
                   <TableCell className="text-foreground font-medium">
-                    {contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>}
+                    <div className="flex items-center gap-2.5">
+                      <Avatar size="sm" className="bg-muted border border-border">
+                        {contact.avatar_url && (
+                          <AvatarImage src={contact.avatar_url} alt={contact.name || ''} />
+                        )}
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                          {(contact.name || contact.phone || '?').charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>}
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-xs">
                     {contact.phone}
