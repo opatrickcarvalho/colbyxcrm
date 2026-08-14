@@ -79,7 +79,7 @@ interface MessageThreadProps {
   conversation: Conversation | null;
   contact: Contact | null;
   messages: Message[];
-  onMessagesLoaded: (messages: Message[]) => void;
+  onMessagesLoaded: (conversationId: string, messages: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
@@ -305,6 +305,16 @@ export function MessageThread({
     onMessagesLoadedRef.current = onMessagesLoaded;
   });
 
+  // Same ref-in-an-effect trick, so the fetch effect below can read
+  // "do we already have something to show for this conversation" at
+  // the moment it runs without adding `messages` to its dependency
+  // array (which would make it re-run — and re-decide loading — on
+  // every message mutation, not just a real conversation switch).
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  });
+
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
@@ -344,13 +354,20 @@ export function MessageThread({
     lastFetchedConversationIdRef.current = conversationId;
 
     (async () => {
-      // Only show the spinner (and blank the already-rendered thread)
-      // when actually switching conversations — the parent already
-      // cleared `messages` for that case. A resync of the SAME thread
-      // fetches quietly in the background and swaps the array in
-      // place once it resolves; React reconciles by message id, so
-      // unaffected bubbles don't even re-render.
-      if (isConversationChange) setLoading(true);
+      // Only blank the thread to a spinner when switching to a
+      // conversation we have nothing to show for yet — either it's
+      // never been opened this session, or the parent had no cached
+      // copy (see InboxPageInner's messageCacheRef). If the parent
+      // already seeded `messages` from that cache, this is exactly
+      // like a same-thread resync: fetch quietly in the background
+      // and swap the array in place once it resolves. This is the
+      // "instant switch back to an already-open chat" WhatsApp Web
+      // gets for free from its local-first store — here it comes from
+      // the cache instead, with a background refetch to catch
+      // anything that changed since.
+      if (isConversationChange && messagesRef.current.length === 0) {
+        setLoading(true);
+      }
 
       const { data, error } = await supabase
         .from('messages')
@@ -363,7 +380,7 @@ export function MessageThread({
       if (error) {
         console.error('Failed to fetch messages:', error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        onMessagesLoadedRef.current(conversationId, data ?? []);
       }
 
       if (!cancelled && isConversationChange) setLoading(false);

@@ -73,6 +73,28 @@ function InboxPageInner() {
    */
   const [resyncToken, setResyncToken] = useState(0);
 
+  /**
+   * In-memory cache of the last-known messages per conversation, so
+   * re-opening a conversation already viewed this session shows them
+   * instantly instead of blanking to a spinner and refetching from
+   * scratch — WhatsApp Web gets this for free from its local-first
+   * store; here it's this cache plus MessageThread's quiet background
+   * refetch (see its fetch effect) that keeps it from ever going
+   * stale for long. Capped LRU so a very long session with many
+   * conversations opened doesn't grow unbounded.
+   */
+  const MESSAGE_CACHE_LIMIT = 50;
+  const messageCacheRef = useRef<Map<string, Message[]>>(new Map());
+  const cacheMessagesFor = useCallback((id: string, msgs: Message[]) => {
+    const cache = messageCacheRef.current;
+    cache.delete(id); // re-insert so it's the most-recently-used entry
+    cache.set(id, msgs);
+    if (cache.size > MESSAGE_CACHE_LIMIT) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey) cache.delete(oldestKey);
+    }
+  }, []);
+
   // Groups tab — kept deliberately separate from the conversation state
   // above rather than merged into one interleaved list. Groups have
   // their own table/thread model (whatsapp_groups /
@@ -480,9 +502,25 @@ function InboxPageInner() {
       // when conversationId changes — so messages would stay empty until
       // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
+
+      // Snapshot whatever's currently on screen — including any
+      // realtime messages that arrived since the last fetch — back
+      // into the cache for the conversation we're leaving, so
+      // switching back to it shows the true latest state instantly
+      // rather than a copy that's missing what just came in live.
+      if (activeConversation) {
+        cacheMessagesFor(activeConversation.id, messages);
+      }
+
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
-      setMessages([]);
+      // Show the cached copy instantly if we have one (WhatsApp-Web-
+      // style instant switch); MessageThread's fetch effect still
+      // quietly revalidates in the background instead of blanking to
+      // a spinner. Falls back to empty only for a conversation that's
+      // never been opened this session — that one still needs a real
+      // fetch, so a brief loading state there is correct, not a bug.
+      setMessages(messageCacheRef.current.get(conv.id) ?? []);
       // Optimistically clear the unread badge for this conv. The
       // server-side reset is fired by the unread-reset effect inside
       // MessageThread (which reads activeConversation.unread_count, not
@@ -512,13 +550,19 @@ function InboxPageInner() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation, messages, router, cacheMessagesFor]
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
   const handleCloseConversation = useCallback(() => {
+    // Same snapshot-before-leaving as handleSelectConversation, so
+    // reopening this conversation later (mobile back → tap it again)
+    // still shows the latest state instantly.
+    if (activeConversation) {
+      cacheMessagesFor(activeConversation.id, messages);
+    }
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
@@ -526,7 +570,7 @@ function InboxPageInner() {
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
     router.replace("/inbox", { scroll: false });
-  }, [router]);
+  }, [activeConversation, messages, router, cacheMessagesFor]);
 
 
   const handleSelectGroup = useCallback(
@@ -541,9 +585,13 @@ function InboxPageInner() {
     setActiveGroup(null);
   }, []);
 
-  const handleMessagesLoaded = useCallback((loaded: Message[]) => {
-    setMessages(loaded);
-  }, []);
+  const handleMessagesLoaded = useCallback(
+    (conversationId: string, loaded: Message[]) => {
+      setMessages(loaded);
+      cacheMessagesFor(conversationId, loaded);
+    },
+    [cacheMessagesFor]
+  );
 
   const handleNewMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
