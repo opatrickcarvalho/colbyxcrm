@@ -121,13 +121,25 @@ const nextConfig: NextConfig = {
    *     refreshing in the background for up to 24 h. A deploy's
    *     chunk-hash drift self-heals within ~5 min with no user-
    *     visible latency.
-   *
-   *   Note: dynamic dashboard routes (/inbox, /contacts, /pipelines,
-   *   /broadcasts, etc.) are server-rendered per request — Next.js
-   *   and Supabase auth already prevent them from being served
-   *   from a shared cache. The s-maxage here is a ceiling; Next.js
-   *   and auth middleware still set `private` / `no-store` for
-   *   per-user responses.
+   *   - The authed dashboard routes below — explicit `private,
+   *     no-store` override, last so it wins (Next.js: "if two
+   *     headers match the same path and set the same key, the last
+   *     one overrides the first"). We used to assume Next.js/auth
+   *     already forced these dynamic responses to bypass the shared
+   *     cache, but they don't: the RSC data fetches these pages issue
+   *     on every client-side navigation (`GET /inbox?c=<id>&_rsc=…`)
+   *     share the exact same pathname as the page itself, so the
+   *     blanket public/s-maxage rule above was applying to them too.
+   *     Hostinger's CDN (hcdn) then genuinely cached/collided on that
+   *     personalized, per-conversation payload — a second identical
+   *     RSC request landing on the still-being-populated cache key
+   *     came back 503, and the Next.js App Router's client navigation
+   *     treats a failed RSC fetch as unrecoverable and falls back to
+   *     a full `window.location` reload. That hard reload is what
+   *     read as "the whole screen flickers" when clicking through
+   *     inbox conversations in production only — `next dev` has no
+   *     CDN in front of it, so it never reproduced locally on the
+   *     same commit.
    *
    * Security headers are appended via a separate catch-all rule
    * below — Next.js merges headers from every matching rule, so
@@ -149,6 +161,17 @@ const nextConfig: NextConfig = {
               "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
           },
         ],
+      },
+      {
+        // Every authed route under src/app/(dashboard)/* plus /admin
+        // (its own top-level route group). Server-rendered per
+        // request with per-user data — must never be shared across
+        // requests or sessions at the edge. Overrides the public rule
+        // above for these paths only; unlisted routes (marketing
+        // pages, /login, etc.) keep the CDN-friendly caching.
+        source:
+          "/:path((?:agents|automations|billing|broadcasts|contacts|dashboard|flows|group-broadcasts|groups|inbox|notifications|pipelines|scheduled-messages|settings|admin)(?:/.*)?)",
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
         // Security headers on every response, including /_next/static
