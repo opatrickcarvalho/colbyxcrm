@@ -15,6 +15,7 @@ import {
 } from "@/lib/whatsapp/providers/capabilities";
 import { isProviderId } from "@/lib/whatsapp/providers/types";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useAuth } from "@/hooks/use-auth";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -390,11 +391,14 @@ function InboxPageInner() {
   // reconnect resync: realtime is best-effort and events sent while the
   // WS was disconnected (laptop sleep, network blip, background-tab
   // throttle) are simply lost. We need a way to catch up.
+  const { accountId } = useAuth();
+
   const { isConnected } = useRealtime({
     channelName: "inbox-realtime",
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
     enabled: true,
+    accountId,
   });
 
   /**

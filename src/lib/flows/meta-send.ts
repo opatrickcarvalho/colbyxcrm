@@ -98,6 +98,7 @@ export async function engineSendText(
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: args.conversationId,
+    account_id: args.accountId,
     sender_type: 'bot',
     content_type: 'text',
     content_text: args.text,
@@ -196,6 +197,7 @@ export async function engineSendMedia(
   const preview = args.caption?.trim() || `[${args.kind}]`;
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: args.conversationId,
+    account_id: args.accountId,
     sender_type: 'bot',
     content_type: args.kind,
     content_text: args.caption ?? null,
@@ -362,6 +364,7 @@ async function sendInteractiveViaProvider(
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
+    account_id: input.accountId,
     sender_type: 'bot',
     content_type: 'interactive',
     content_text: input.bodyText,

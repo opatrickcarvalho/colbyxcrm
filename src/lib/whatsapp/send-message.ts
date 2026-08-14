@@ -482,6 +482,7 @@ export async function sendMessageToConversation(
     .from('messages')
     .insert({
       conversation_id: conversationId,
+      account_id: accountId,
       sender_type: 'agent',
       content_type: messageType,
       content_text: interactiveBody ?? contentText ?? null,

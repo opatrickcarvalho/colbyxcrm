@@ -38,6 +38,8 @@ interface MessageBubbleProps {
    * stays inline and non-clickable.
    */
   onOpenMedia?: (messageId: string) => void;
+  /** In-conversation search term — see message-thread.tsx's search bar. */
+  highlightQuery?: string;
 }
 
 // Only ever rendered on an agent (outbound) bubble — `bg-primary
@@ -111,14 +113,44 @@ function StatusIcon({
   }
 }
 
+// Escapes regex metacharacters in a user-typed search query before it's
+// used to build a RegExp — otherwise a query like "3.5" or "(oi)" would
+// be interpreted as a pattern instead of literal text.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Splits `text` on (case-insensitive) occurrences of `query`, wrapping
+ *  matches in <mark>. Returns the plain text unchanged when `query` is
+ *  empty. */
+function highlightText(text: string, query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return text;
+  const parts = text.split(new RegExp(`(${escapeRegExp(trimmed)})`, 'gi'));
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    part.toLowerCase() === trimmed.toLowerCase() ? (
+      <mark key={i} className="rounded-sm bg-primary/40 text-inherit">
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
 function MessageContent({
   message,
   t,
   onOpenMedia,
+  highlightQuery,
 }: {
   message: Message;
   t: ReturnType<typeof useTranslations>;
   onOpenMedia?: (messageId: string) => void;
+  /** In-conversation search term (see message-thread.tsx) — when set,
+   *  matches in text content are wrapped in <mark>. */
+  highlightQuery?: string;
 }) {
   // Passed to the media bubbles as a no-arg callback; `undefined` when the
   // parent wired up no viewer, which is what makes them non-clickable.
@@ -128,7 +160,9 @@ function MessageContent({
     case 'text':
       return (
         <p className="text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
-          {message.content_text}
+          {highlightQuery
+            ? highlightText(message.content_text ?? '', highlightQuery)
+            : message.content_text}
         </p>
       );
 
@@ -258,6 +292,7 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
   onOpenMedia,
+  highlightQuery,
 }: MessageBubbleProps) {
   const t = useTranslations('Inbox.bubble');
 
@@ -284,7 +319,12 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} t={t} onOpenMedia={onOpenMedia} />
+        <MessageContent
+          message={message}
+          t={t}
+          onOpenMedia={onOpenMedia}
+          highlightQuery={highlightQuery}
+        />
         <div
           className={cn(
             'mt-1 flex items-center gap-1',

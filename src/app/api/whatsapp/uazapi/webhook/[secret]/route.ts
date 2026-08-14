@@ -1182,6 +1182,7 @@ export async function POST(
 
       const { error: insertError } = await db.from('messages').insert({
         conversation_id: conversationId,
+        account_id: config.account_id,
         sender_type: message.fromMe ? 'agent' : 'customer',
         content_type: contentType,
         content_text: text || null,

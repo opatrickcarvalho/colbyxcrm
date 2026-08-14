@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Send,
   LayoutTemplate,
@@ -17,6 +18,7 @@ import {
   MessageSquareDashed,
   Zap,
   Clock,
+  Smile,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GatedButton } from '@/components/ui/gated-button';
@@ -26,6 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import type { EmojiClickData } from 'emoji-picker-react';
 import {
   Dialog,
   DialogContent,
@@ -55,6 +59,13 @@ import {
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive';
 import type { InteractiveMessagePayload, QuickReply } from '@/types';
 import { QuickReplyPicker } from './quick-reply-picker';
+
+// Client-only + code-split: the picker's emoji dataset is sizeable and
+// irrelevant to first paint of the composer — load it lazily, only once
+// the agent actually opens the picker.
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
+  ssr: false,
+});
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = 'image' | 'video' | 'document' | 'audio';
@@ -188,6 +199,37 @@ export function MessageComposer({
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ---- Per-conversation draft isolation -------------------------------
+  // This component is NOT remounted when the agent switches conversations
+  // (no `key` on <MessageComposer> in message-thread.tsx), so without
+  // this, an unsent draft typed for one contact kept showing up when
+  // switching to another. A Map survives across re-renders of this same
+  // instance — exactly what's missing — keyed by conversationId, so
+  // switching away saves the outgoing draft and switching to a
+  // conversation with one restores it, and switching to a fresh one
+  // shows empty. Deliberately in-memory only (not localStorage): this
+  // fixes the leak-between-conversations bug without expanding into
+  // persistence across page reloads, which nobody asked for.
+  const draftCacheRef = useRef<Map<string, string>>(new Map());
+  const prevConversationIdRef = useRef(conversationId);
+  // Mirrors `text` so the conversation-switch effect below can read the
+  // just-typed draft without adding `text` to its dependency array
+  // (which would make it re-run — and re-save/re-load — on every
+  // keystroke instead of only on an actual conversation switch). Same
+  // ref-in-an-effect trick used throughout message-thread.tsx.
+  const textRef = useRef(text);
+  useEffect(() => {
+    textRef.current = text;
+  });
+  useEffect(() => {
+    const prevId = prevConversationIdRef.current;
+    if (prevId !== conversationId) {
+      draftCacheRef.current.set(prevId, textRef.current);
+      setText(draftCacheRef.current.get(conversationId) ?? '');
+      prevConversationIdRef.current = conversationId;
+    }
+  }, [conversationId]);
   // Composer root — lets the document-level paste handler tell "pasted
   // into the composer" from "pasted into some other field on the page".
   const rootRef = useRef<HTMLDivElement>(null);
@@ -325,6 +367,7 @@ export function MessageComposer({
     try {
       onSend(trimmed, replyTo?.id);
       setText('');
+      draftCacheRef.current.delete(conversationId);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -425,6 +468,7 @@ export function MessageComposer({
       if (scheduleTarget.kind === 'text') {
         clearTyping();
         setText('');
+        draftCacheRef.current.delete(conversationId);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
       } else {
         // The staged object is now owned by the scheduled row — clear
@@ -463,6 +507,28 @@ export function MessageComposer({
       }
     },
     [adjustHeight, notifyComposing, clearTyping]
+  );
+
+  // Insert at the caret (not just appended) so picking an emoji
+  // mid-sentence lands where the agent was actually typing — matches
+  // WhatsApp's own picker behaviour. Popover stays open afterwards so
+  // multiple emoji can be picked in a row without reopening it.
+  const handleEmojiClick = useCallback(
+    (emojiData: EmojiClickData) => {
+      const el = textareaRef.current;
+      const start = el?.selectionStart ?? text.length;
+      const end = el?.selectionEnd ?? text.length;
+      const next = text.slice(0, start) + emojiData.emoji + text.slice(end);
+      setText(next);
+      adjustHeight();
+      notifyComposing();
+      const caret = start + emojiData.emoji.length;
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(caret, caret);
+      });
+    },
+    [text, adjustHeight, notifyComposing]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
@@ -1046,6 +1112,22 @@ export function MessageComposer({
               <Sparkles className="h-4 w-4" />
             )}
           </GatedButton>
+
+          <Popover>
+            <PopoverTrigger
+              disabled={inputsDisabled}
+              title={readOnly ? undefined : t('emojiPicker')}
+              className="text-muted-foreground hover:text-foreground inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Smile className="h-4 w-4" />
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-auto border-none bg-transparent p-0 shadow-none ring-0"
+            >
+              <EmojiPicker onEmojiClick={handleEmojiClick} />
+            </PopoverContent>
+          </Popover>
 
           <textarea
             ref={textareaRef}

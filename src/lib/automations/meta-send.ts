@@ -178,6 +178,7 @@ async function sendViaProvider(
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
+    account_id: input.accountId,
     sender_type: 'bot',
     content_type,
     content_text,

@@ -679,6 +679,7 @@ async function processMessage(
     .upsert(
       {
         conversation_id: conversation.id,
+        account_id: accountId,
         sender_type: 'customer',
         content_type: contentType,
         content_text: contentText,

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { keysetFilter, buildPage } from '@/lib/api/v1/pagination';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
 import { PresenceDot } from '@/components/presence/presence-dot';
@@ -25,6 +26,7 @@ import {
 import {
   MessageSquare,
   ChevronDown,
+  ChevronUp,
   UserPlus,
   Check,
   Clock,
@@ -33,6 +35,8 @@ import {
   PanelRightOpen,
   PanelRightClose,
   Tags,
+  Search,
+  X,
 } from 'lucide-react';
 import { format, isToday, isYesterday, differenceInHours } from 'date-fns';
 import { useTranslations } from 'next-intl';
@@ -175,6 +179,21 @@ const STATUS_OPTIONS: {
 const DOODLE_BG_CLASSES =
   "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
+/** How many messages a single page fetch/prepend loads. */
+const MESSAGE_PAGE_SIZE = 50;
+
+/** Merge an incremental "catch up" fetch into what's already loaded,
+ *  deduping by id. Used by the resync path (see the fetch effect) —
+ *  never replaces, since a naive replace would drop any older pages
+ *  the agent has scrolled into view. */
+function mergeById(existing: Message[], incoming: Message[]): Message[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((m) => m.id));
+  const fresh = incoming.filter((m) => !seen.has(m.id));
+  if (fresh.length === 0) return existing;
+  return [...existing, ...fresh];
+}
+
 export function MessageThread({
   conversation,
   contact,
@@ -201,6 +220,31 @@ export function MessageThread({
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ---- Pagination state (see the fetch effect below) ------------------
+  // Whether there's more (older) history than what's currently loaded —
+  // starts true (unknown) and is only known for sure after the first
+  // page comes back. Reset on a real conversation switch; NOT part of
+  // InboxPageInner's message cache, so re-opening an already-fully-
+  // scrolled conversation may fire one harmless extra "load more" that
+  // returns nothing before settling back to false.
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // Tags what the *next* `messages` prop change represents, so the
+  // scroll-position effect below can tell "older messages were just
+  // prepended — hold the viewport in place" apart from the normal
+  // "a new message arrived / conversation switched — scroll to the
+  // bottom" case. Set immediately before whichever call is about to
+  // change `messages`; consumed (and reset) by that effect.
+  const pendingScrollModeRef = useRef<'bottom' | 'preserve'>('bottom');
+  // Captured synchronously right before a prepend, so the scroll effect
+  // can restore the reader's position once the DOM grows above them.
+  const prevScrollHeightRef = useRef(0);
+
+  // ---- In-conversation search ------------------------------------------
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -369,21 +413,72 @@ export function MessageThread({
         setLoading(true);
       }
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+      if (isConversationChange) {
+        // Unknown until the fetch below resolves — reset rather than
+        // carry over the previous conversation's value.
+        setHasMoreOlder(true);
+        setLoadingOlder(false);
 
-      if (cancelled) return;
+        // Bounded to the last page — an unbounded fetch here doesn't
+        // scale to a contact with years of history. Older messages
+        // load on demand (see loadOlderMessages, triggered by
+        // scrolling near the top).
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(MESSAGE_PAGE_SIZE + 1);
 
-      if (error) {
-        console.error('Failed to fetch messages:', error);
+        if (cancelled) return;
+
+        if (error) {
+          console.error('Failed to fetch messages:', error);
+        } else {
+          const { items, nextCursor } = buildPage(
+            data ?? [],
+            MESSAGE_PAGE_SIZE
+          );
+          setHasMoreOlder(nextCursor !== null);
+          pendingScrollModeRef.current = 'bottom';
+          onMessagesLoadedRef.current(conversationId, items.slice().reverse());
+        }
+
+        if (!cancelled) setLoading(false);
       } else {
-        onMessagesLoadedRef.current(conversationId, data ?? []);
-      }
+        // Same-thread resync (tab regains focus / realtime reconnects):
+        // only catch up on messages newer than the newest one already
+        // loaded, and MERGE rather than replace. A wholesale replace
+        // here would silently drop any older pages the agent scrolled
+        // into view — this is exactly the gap a resync exists to fill,
+        // not a reason to discard everything else on screen. Realtime
+        // itself (handleNewMessage in page.tsx) already appends brand
+        // new messages live; this is purely a safety net for events
+        // sent while the WS was disconnected, so dedupe-by-id is
+        // enough — no need to detect gaps more precisely than that.
+        const newest = messagesRef.current.at(-1);
+        if (!newest) return;
 
-      if (!cancelled && isConversationChange) setLoading(false);
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .gt('created_at', newest.created_at)
+          .order('created_at', { ascending: true });
+
+        if (cancelled) return;
+
+        if (error) {
+          console.error('Failed to resync messages:', error);
+        } else if (data && data.length > 0) {
+          pendingScrollModeRef.current = 'bottom';
+          onMessagesLoadedRef.current(
+            conversationId,
+            mergeById(messagesRef.current, data)
+          );
+        }
+      }
     })();
 
     return () => {
@@ -394,6 +489,64 @@ export function MessageThread({
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
   }, [conversationId, resyncToken]);
+
+  // Fetch the page of history just before what's currently loaded and
+  // prepend it, preserving the reader's scroll position (see the
+  // layout effect below). Triggered by scrolling near the top of the
+  // thread — see the onScroll handler wired to `scrollRef`.
+  const loadOlderMessages = useCallback(async () => {
+    if (!conversationId || !hasMoreOlder || loadingOlder) return;
+    const oldest = messagesRef.current[0];
+    if (!oldest) return;
+
+    setLoadingOlder(true);
+    try {
+      const supabase = createClient();
+      let query = supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(MESSAGE_PAGE_SIZE + 1);
+
+      const cursor = keysetFilter({
+        createdAt: oldest.created_at,
+        id: oldest.id,
+      });
+      if (cursor) query = query.or(cursor);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Failed to load older messages:', error);
+        return;
+      }
+
+      const { items, nextCursor } = buildPage(data ?? [], MESSAGE_PAGE_SIZE);
+      setHasMoreOlder(nextCursor !== null);
+      if (items.length === 0) return;
+
+      // Measured synchronously, right before the height-changing update
+      // — the layout effect below reads this to keep the same messages
+      // anchored on screen instead of the viewport jumping down.
+      if (scrollRef.current) {
+        prevScrollHeightRef.current = scrollRef.current.scrollHeight;
+      }
+      pendingScrollModeRef.current = 'preserve';
+      onMessagesLoadedRef.current(conversationId, [
+        ...items.slice().reverse(),
+        ...messagesRef.current,
+      ]);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [conversationId, hasMoreOlder, loadingOlder]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop < 100) void loadOlderMessages();
+  }, [loadOlderMessages]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -536,12 +689,22 @@ export function MessageThread({
     });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
+  // Scroll to bottom on new messages (send, realtime, conversation
+  // switch) — EXCEPT right after loadOlderMessages prepends a page of
+  // history, where jumping to the bottom would defeat the whole point
+  // of "load more while reading old messages". `pendingScrollModeRef`
+  // is set immediately before whichever state update is about to
+  // change `messages`; `useLayoutEffect` (not `useEffect`) so this
+  // runs before the browser paints — no visible jump either way.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (pendingScrollModeRef.current === 'preserve') {
+      el.scrollTop += el.scrollHeight - prevScrollHeightRef.current;
+    } else {
       el.scrollTop = el.scrollHeight;
     }
+    pendingScrollModeRef.current = 'bottom';
   }, [messages]);
 
   const handleSend = useCallback(
@@ -851,6 +1014,48 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
+  // ---- In-conversation search -------------------------------------
+  // Client-side over whatever's currently loaded (see the pagination
+  // effect above) — this deliberately does NOT reach into history that
+  // hasn't been fetched yet; the "no results" hint below tells the
+  // agent to scroll up and load more instead of pretending the search
+  // covers everything ever said.
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return messages.filter(
+      (m) => m.content_type === 'text' && m.content_text?.toLowerCase().includes(q)
+    );
+  }, [messages, searchQuery]);
+
+  useEffect(() => {
+    setActiveMatchIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (searchMatches.length === 0) return;
+    const match = searchMatches[activeMatchIndex];
+    if (!match) return;
+    document
+      .getElementById(`msg-${match.id}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [searchMatches, activeMatchIndex]);
+
+  const goToMatch = useCallback(
+    (direction: 1 | -1) => {
+      if (searchMatches.length === 0) return;
+      setActiveMatchIndex(
+        (i) => (i + direction + searchMatches.length) % searchMatches.length
+      );
+    },
+    [searchMatches.length]
+  );
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+  }, []);
+
   const contactDisplayName = contact?.name || contact?.phone || 'Customer';
 
   // Author label for a quoted message: "You" when we sent the parent,
@@ -1062,6 +1267,23 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Search within this conversation's currently-loaded
+              messages — see the search bar rendered below the header
+              when `searchOpen`. */}
+          <button
+            type="button"
+            onClick={() => setSearchOpen((v) => !v)}
+            aria-label={t('searchInConversation')}
+            aria-pressed={searchOpen}
+            title={t('searchInConversation')}
+            className={cn(
+              'hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+              searchOpen ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
               smaller laptops; this lets agents reclaim it when they just
@@ -1222,8 +1444,77 @@ export function MessageThread({
         </div>
       </div>
 
+      {searchOpen && (
+        <div className="border-border bg-card flex items-center gap-2 border-b px-4 py-2">
+          <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          <input
+            autoFocus
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') closeSearch();
+              if (e.key === 'Enter') goToMatch(e.shiftKey ? -1 : 1);
+            }}
+            placeholder={t('searchPlaceholder')}
+            className="text-foreground placeholder-muted-foreground flex-1 bg-transparent text-sm outline-none"
+          />
+          {searchQuery.trim() && (
+            <span className="text-muted-foreground shrink-0 text-xs">
+              {searchMatches.length > 0
+                ? t('searchMatchCount', {
+                    current: activeMatchIndex + 1,
+                    total: searchMatches.length,
+                  })
+                : t('searchNoResults')}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => goToMatch(-1)}
+            disabled={searchMatches.length === 0}
+            aria-label={t('searchPrevious')}
+            title={t('searchPrevious')}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md disabled:opacity-40"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => goToMatch(1)}
+            disabled={searchMatches.length === 0}
+            aria-label={t('searchNext')}
+            title={t('searchNext')}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md disabled:opacity-40"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={closeSearch}
+            aria-label={t('searchClose')}
+            title={t('searchClose')}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {searchOpen &&
+        searchQuery.trim() &&
+        searchMatches.length === 0 &&
+        hasMoreOlder && (
+          <p className="text-muted-foreground bg-card border-border border-b px-4 py-1.5 text-xs">
+            {t('searchNoResultsHint')}
+          </p>
+        )}
+
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
@@ -1239,6 +1530,11 @@ export function MessageThread({
           </div>
         ) : (
           <div className="space-y-4">
+            {loadingOlder && (
+              <div className="flex items-center justify-center py-2">
+                <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
+              </div>
+            )}
             {messageGroups.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}
@@ -1275,23 +1571,25 @@ export function MessageThread({
                       void postReaction(msg.id, next);
                     };
                     return (
-                      <MessageActions
-                        key={msg.id}
-                        message={msg}
-                        onReply={() => handleStartReply(msg)}
-                        onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
-                        }}
-                      >
-                        <MessageBubble
+                      <div key={msg.id} id={`msg-${msg.id}`}>
+                        <MessageActions
                           message={msg}
-                          reply={reply}
-                          reactions={msgReactions}
-                          currentUserId={user?.id}
-                          onToggleReaction={handlePillToggle}
-                          onOpenMedia={handleMediaChange}
-                        />
-                      </MessageActions>
+                          onReply={() => handleStartReply(msg)}
+                          onReact={(emoji) => {
+                            if (emoji) void postReaction(msg.id, emoji);
+                          }}
+                        >
+                          <MessageBubble
+                            message={msg}
+                            reply={reply}
+                            reactions={msgReactions}
+                            currentUserId={user?.id}
+                            onToggleReaction={handlePillToggle}
+                            onOpenMedia={handleMediaChange}
+                            highlightQuery={searchOpen ? searchQuery : undefined}
+                          />
+                        </MessageActions>
+                      </div>
                     );
                   })}
                 </div>
