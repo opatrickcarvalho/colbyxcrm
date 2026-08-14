@@ -27,7 +27,9 @@ export async function GET(request: Request) {
 
     const { data: accounts, error: accountsErr } = await db
       .from('accounts')
-      .select('id, name, owner_user_id, status, created_at')
+      .select(
+        'id, name, owner_user_id, status, created_at, billing_status, plan_expires_at, billing_exempt'
+      )
       .order('created_at', { ascending: false })
       .limit(500);
 
@@ -49,10 +51,7 @@ export async function GET(request: Request) {
 
     const [memberRowsRes, ownerProfilesRes, configsRes] = await Promise.all([
       db.from('profiles').select('account_id').in('account_id', accountIds),
-      db
-        .from('profiles')
-        .select('user_id, email')
-        .in('user_id', ownerIds),
+      db.from('profiles').select('user_id, email').in('user_id', ownerIds),
       db
         .from('whatsapp_config')
         .select('account_id, provider, status')
@@ -85,6 +84,11 @@ export async function GET(request: Request) {
           whatsapp: config
             ? { provider: config.provider, status: config.status }
             : null,
+          billing: {
+            status: (a.billing_status as string | null) ?? null,
+            planExpiresAt: (a.plan_expires_at as string | null) ?? null,
+            exempt: a.billing_exempt === true,
+          },
           createdAt: a.created_at,
         };
       })

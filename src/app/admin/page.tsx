@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { toast } from "sonner";
-import { Loader2, Search, ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { Loader2, Search, ShieldAlert } from 'lucide-react';
 
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -16,15 +16,20 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from '@/components/ui/table';
 
 interface AdminAccountRow {
   id: string;
   name: string;
   ownerEmail: string | null;
-  status: "active" | "suspended";
+  status: 'active' | 'suspended';
   memberCount: number;
   whatsapp: { provider: string; status: string } | null;
+  billing: {
+    status: string | null;
+    planExpiresAt: string | null;
+    exempt: boolean;
+  };
   createdAt: string;
 }
 
@@ -36,45 +41,48 @@ interface AdminAccountRow {
  * non-admin back to their own dashboard.
  */
 export default function AdminAccountsPage() {
-  const t = useTranslations("Admin.accounts");
+  const t = useTranslations('Admin.accounts');
   const router = useRouter();
 
   const [accounts, setAccounts] = useState<AdminAccountRow[] | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async (q: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/admin/accounts${q ? `?q=${encodeURIComponent(q)}` : ""}`
-      );
-      if (res.status === 401 || res.status === 403) {
-        setDenied(true);
-        return;
+  const load = useCallback(
+    async (q: string) => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/admin/accounts${q ? `?q=${encodeURIComponent(q)}` : ''}`
+        );
+        if (res.status === 401 || res.status === 403) {
+          setDenied(true);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data.error ?? t('loadError'));
+          return;
+        }
+        setAccounts(data.accounts ?? []);
+      } catch {
+        toast.error(t('loadError'));
+      } finally {
+        setLoading(false);
       }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error ?? t("loadError"));
-        return;
-      }
-      setAccounts(data.accounts ?? []);
-    } catch {
-      toast.error(t("loadError"));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+    },
+    [t]
+  );
 
   useEffect(() => {
-    void load("");
+    void load('');
   }, [load]);
 
   useEffect(() => {
     if (denied) {
-      const timer = setTimeout(() => router.replace("/dashboard"), 1500);
+      const timer = setTimeout(() => router.replace('/dashboard'), 1500);
       return () => clearTimeout(timer);
     }
   }, [denied, router]);
@@ -85,23 +93,23 @@ export default function AdminAccountsPage() {
   };
 
   const toggleSuspend = async (row: AdminAccountRow) => {
-    const suspending = row.status === "active";
+    const suspending = row.status === 'active';
     if (suspending) {
-      const reason = window.prompt(t("suspendReasonPrompt")) ?? undefined;
+      const reason = window.prompt(t('suspendReasonPrompt')) ?? undefined;
       if (reason === undefined) return; // cancelled
       setBusyId(row.id);
       try {
         const res = await fetch(`/api/admin/accounts/${row.id}/suspend`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          toast.error(data.error ?? t("actionError"));
+          toast.error(data.error ?? t('actionError'));
           return;
         }
-        toast.success(t("suspended"));
+        toast.success(t('suspended'));
         void load(query);
       } finally {
         setBusyId(null);
@@ -110,14 +118,14 @@ export default function AdminAccountsPage() {
       setBusyId(row.id);
       try {
         const res = await fetch(`/api/admin/accounts/${row.id}/reactivate`, {
-          method: "POST",
+          method: 'POST',
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          toast.error(data.error ?? t("actionError"));
+          toast.error(data.error ?? t('actionError'));
           return;
         }
-        toast.success(t("reactivated"));
+        toast.success(t('reactivated'));
         void load(query);
       } finally {
         setBusyId(null);
@@ -127,59 +135,60 @@ export default function AdminAccountsPage() {
 
   if (denied) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center">
-        <ShieldAlert className="h-10 w-10 text-destructive" />
-        <p className="text-sm text-muted-foreground">{t("accessDenied")}</p>
+      <div className="bg-background flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+        <ShieldAlert className="text-destructive h-10 w-10" />
+        <p className="text-muted-foreground text-sm">{t('accessDenied')}</p>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
+      <h1 className="text-foreground text-xl font-semibold">{t('title')}</h1>
+      <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
 
       <form onSubmit={handleSearch} className="mt-6 flex max-w-sm gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("searchPlaceholder")}
+            placeholder={t('searchPlaceholder')}
             className="pl-9"
           />
         </div>
         <Button type="submit" variant="outline">
-          {t("search")}
+          {t('search')}
         </Button>
       </form>
 
-      <div className="mt-6 rounded-xl border border-border bg-card">
+      <div className="border-border bg-card mt-6 rounded-xl border">
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
           </div>
         ) : !accounts || accounts.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">
-            {t("noAccounts")}
+          <p className="text-muted-foreground py-16 text-center text-sm">
+            {t('noAccounts')}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("colName")}</TableHead>
-                <TableHead>{t("colOwner")}</TableHead>
-                <TableHead>{t("colMembers")}</TableHead>
-                <TableHead>{t("colWhatsapp")}</TableHead>
-                <TableHead>{t("colStatus")}</TableHead>
-                <TableHead>{t("colCreated")}</TableHead>
-                <TableHead className="text-right">{t("colActions")}</TableHead>
+                <TableHead>{t('colName')}</TableHead>
+                <TableHead>{t('colOwner')}</TableHead>
+                <TableHead>{t('colMembers')}</TableHead>
+                <TableHead>{t('colWhatsapp')}</TableHead>
+                <TableHead>{t('colStatus')}</TableHead>
+                <TableHead>{t('colBilling')}</TableHead>
+                <TableHead>{t('colCreated')}</TableHead>
+                <TableHead className="text-right">{t('colActions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {accounts.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="font-medium text-foreground">
+                  <TableCell className="text-foreground font-medium">
                     <a
                       href={`/admin/accounts/${row.id}`}
                       className="hover:underline"
@@ -188,7 +197,7 @@ export default function AdminAccountsPage() {
                     </a>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {row.ownerEmail ?? "—"}
+                    {row.ownerEmail ?? '—'}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {row.memberCount}
@@ -196,14 +205,47 @@ export default function AdminAccountsPage() {
                   <TableCell className="text-muted-foreground">
                     {row.whatsapp
                       ? `${row.whatsapp.provider} · ${row.whatsapp.status}`
-                      : t("notConnected")}
+                      : t('notConnected')}
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={row.status === "active" ? "outline" : "destructive"}
+                      variant={
+                        row.status === 'active' ? 'outline' : 'destructive'
+                      }
                     >
-                      {row.status === "active" ? t("active") : t("suspendedBadge")}
+                      {row.status === 'active'
+                        ? t('active')
+                        : t('suspendedBadge')}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {row.billing.exempt ? (
+                      <Badge variant="secondary">{t('billingExempt')}</Badge>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        <Badge
+                          variant={
+                            row.billing.status === 'active' ||
+                            row.billing.status === 'trialing'
+                              ? 'outline'
+                              : row.billing.status === 'past_due' ||
+                                  row.billing.status === 'expired'
+                                ? 'destructive'
+                                : 'secondary'
+                          }
+                        >
+                          {row.billing.status ?? '—'}
+                        </Badge>
+                        {row.billing.planExpiresAt && (
+                          <span className="text-xs">
+                            {t('colBillingExpires')}{' '}
+                            {new Date(
+                              row.billing.planExpiresAt
+                            ).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(row.createdAt).toLocaleDateString()}
@@ -211,16 +253,18 @@ export default function AdminAccountsPage() {
                   <TableCell className="text-right">
                     <Button
                       size="sm"
-                      variant={row.status === "active" ? "destructive" : "outline"}
+                      variant={
+                        row.status === 'active' ? 'destructive' : 'outline'
+                      }
                       disabled={busyId === row.id}
                       onClick={() => void toggleSuspend(row)}
                     >
                       {busyId === row.id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : row.status === "active" ? (
-                        t("suspend")
+                      ) : row.status === 'active' ? (
+                        t('suspend')
                       ) : (
-                        t("reactivate")
+                        t('reactivate')
                       )}
                     </Button>
                   </TableCell>
