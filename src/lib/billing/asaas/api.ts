@@ -6,7 +6,7 @@
 // and the cents/reais boundary.
 // ============================================================
 
-import { asaasFetch } from './client';
+import { AsaasError, asaasFetch } from './client';
 import type {
   AsaasCustomer,
   AsaasList,
@@ -87,24 +87,50 @@ export interface CreateSubscriptionInput {
 export async function createAsaasSubscription(
   input: CreateSubscriptionInput
 ): Promise<AsaasSubscription> {
-  return asaasFetch<AsaasSubscription>('/subscriptions', {
-    method: 'POST',
-    body: {
-      customer: input.customerId,
-      // UNDEFINED lets the customer choose PIX, boleto or card on
-      // Asaas's hosted invoice. That keeps card data entirely off
-      // our infrastructure — no PCI surface, no card form to build.
-      billingType: 'UNDEFINED',
-      value: toReais(input.valueCents),
-      nextDueDate: input.nextDueDate,
-      cycle: input.cycle,
-      description: input.description.slice(0, 500),
-      externalReference: input.externalReference,
-      callback: input.successUrl
-        ? { successUrl: input.successUrl, autoRedirect: true }
-        : undefined,
-    },
-  });
+  const body = {
+    customer: input.customerId,
+    // UNDEFINED lets the customer choose PIX, boleto or card on
+    // Asaas's hosted invoice. That keeps card data entirely off
+    // our infrastructure — no PCI surface, no card form to build.
+    billingType: 'UNDEFINED',
+    value: toReais(input.valueCents),
+    nextDueDate: input.nextDueDate,
+    cycle: input.cycle,
+    description: input.description.slice(0, 500),
+    externalReference: input.externalReference,
+  };
+
+  try {
+    return await asaasFetch<AsaasSubscription>('/subscriptions', {
+      method: 'POST',
+      body: input.successUrl
+        ? {
+            ...body,
+            callback: { successUrl: input.successUrl, autoRedirect: true },
+          }
+        : body,
+    });
+  } catch (err) {
+    // `callback` requires the ASAAS ACCOUNT — not the URL, the whole
+    // account — to have a domain registered under "Minha Conta ->
+    // Informações" on Asaas's dashboard. That's a one-time manual
+    // setup step on Asaas's side with no API to check for it in
+    // advance (confirmed against the sandbox API: identical request
+    // with `callback` omitted succeeds; with it present, Asaas answers
+    // 400 invalid_object "Não há nenhum domínio configurado em sua
+    // conta"). Losing the auto-redirect is a pure UX downgrade — the
+    // customer has to navigate back to /billing manually after paying
+    // instead of bouncing there automatically — never something that
+    // should turn "subscribe" into an Internal Server Error. The
+    // webhook is what actually grants access either way.
+    if (input.successUrl && err instanceof AsaasError) {
+      return asaasFetch<AsaasSubscription>('/subscriptions', {
+        method: 'POST',
+        body,
+      });
+    }
+    throw err;
+  }
 }
 
 /**

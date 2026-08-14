@@ -31,6 +31,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { isEntitled, type BillingSnapshot } from '@/lib/billing/entitlement';
 import { getBillingSettings } from '@/lib/billing/platform-settings';
+import { AsaasError } from '@/lib/billing/asaas/client';
 import { hasMinRole, isAccountRole, type AccountRole } from './roles';
 
 // ------------------------------------------------------------
@@ -123,6 +124,22 @@ export function toErrorResponse(err: unknown): NextResponse {
   }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  if (err instanceof AsaasError) {
+    // Never the raw gateway text on the wire — it can carry account
+    // details (see asaasFetch's doc comment) — but 502 + a stable code
+    // beats collapsing every Asaas hiccup into an opaque 500 "Internal
+    // server error", which is what happened before this branch existed
+    // (src/lib/billing/asaas/api.ts's docstring described this behavior
+    // for years without it actually being implemented anywhere).
+    console.error('[toErrorResponse] Asaas error:', err.asaasCode, err.message);
+    return NextResponse.json(
+      {
+        error: 'Payment gateway error. Please try again.',
+        code: 'asaas_error',
+      },
+      { status: 502 }
+    );
   }
   console.error('[toErrorResponse] uncategorized error:', err);
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
