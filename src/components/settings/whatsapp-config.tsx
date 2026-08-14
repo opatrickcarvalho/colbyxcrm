@@ -17,6 +17,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslations } from 'next-intl';
+import { useBranding } from '@/components/branding/branding-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +46,7 @@ type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
 
 export function WhatsAppConfig() {
   const t = useTranslations('Settings.whatsapp');
+  const branding = useBranding();
   const supabase = createClient();
   // After multi-user, whatsapp_config is one-row-per-account, not
   // one-row-per-user. We pull `accountId` straight off the auth
@@ -583,7 +585,9 @@ export function WhatsAppConfig() {
                       (isRegistered ? 'text-emerald-200' : 'text-amber-200')
                     }
                   >
-                    {isRegistered ? t('registered') : t('notRegistered')}
+                    {isRegistered
+                      ? t('registered', { siteName: branding.siteName ?? 'CRM' })
+                      : t('notRegistered')}
                   </AlertTitle>
                 </div>
                 <Button
@@ -772,7 +776,7 @@ export function WhatsAppConfig() {
                   className="bg-muted border-border text-foreground placeholder:text-muted-foreground tracking-widest"
                 />
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  <span dangerouslySetInnerHTML={{ __html: t.raw('pinHint') }} />
+                  {t('pinHint', { siteName: branding.siteName ?? 'CRM' })}
                 </p>
               </div>
             </CardContent>

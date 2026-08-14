@@ -19,6 +19,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from '@/lib/storage/upload-media';
 import { useAuth } from '@/hooks/use-auth';
+import { useBranding } from '@/components/branding/branding-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -126,6 +127,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const branding = useBranding();
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 
@@ -1095,8 +1097,14 @@ export function TemplateManager() {
             <DialogTitle className="text-popover-foreground">{t('deleteDialogTitle')}</DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {templateToDelete?.meta_template_id
-                ? t('deleteMetaDesc', { name: templateToDelete.name })
-                : t('deleteLocalDesc', { name: templateToDelete?.name || '' })}
+                ? t('deleteMetaDesc', {
+                    name: templateToDelete.name,
+                    siteName: branding.siteName ?? 'CRM',
+                  })
+                : t('deleteLocalDesc', {
+                    name: templateToDelete?.name || '',
+                    siteName: branding.siteName ?? 'CRM',
+                  })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-popover border-border">

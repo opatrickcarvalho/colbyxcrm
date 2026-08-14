@@ -23,11 +23,11 @@ const inter = Inter({
 
 // Dynamic so a superadmin-configured site name (see
 // src/lib/branding/get-branding.ts) shows up in the tab title
-// without a redeploy. Falls back to the original "wacrm" default
-// when branding isn't configured.
+// without a redeploy. Falls back to a brand-neutral "CRM" when
+// branding isn't configured — never the original template name.
 export async function generateMetadata(): Promise<Metadata> {
   const { siteName } = await getBrandingSettings();
-  const name = siteName ?? "wacrm";
+  const name = siteName ?? "CRM";
 
   return {
     title: {

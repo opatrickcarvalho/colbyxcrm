@@ -45,10 +45,19 @@ function readString(value: unknown): string | null {
  * not yet run migration 057, where the keys simply don't exist —
  * it returns the fallback (everything null), so every consumer
  * falls back to today's hardcoded defaults instead of erroring.
+ *
+ * Pass `{ skipCache: true }` for a low-traffic surface where the old
+ * value being visible for up to 60s after a save is unacceptable
+ * (e.g. the logged-out login screen) — trades a DB round trip on
+ * that request for a hard guarantee of freshness.
  */
-export async function getBrandingSettings(): Promise<BrandingSettings> {
+export async function getBrandingSettings(
+  opts: { skipCache?: boolean } = {}
+): Promise<BrandingSettings> {
   const now = Date.now();
-  if (cached && now - cachedAt < CACHE_TTL_MS) return cached;
+  if (!opts.skipCache && cached && now - cachedAt < CACHE_TTL_MS) {
+    return cached;
+  }
 
   try {
     const db = supabaseAdmin();

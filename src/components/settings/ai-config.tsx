@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
+import { useBranding } from '@/components/branding/branding-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +53,7 @@ export function AiConfig() {
   const { accountId, accountRole, profileLoading } = useAuth();
   const canEdit = accountRole ? canEditSettings(accountRole) : false;
   const t = useTranslations('Settings.aiConfig');
+  const branding = useBranding();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -245,7 +247,7 @@ export function AiConfig() {
     <div>
       <SettingsPanelHead
         title={t('title')}
-        description={t('description')}
+        description={t('description', { siteName: branding.siteName ?? 'CRM' })}
       />
 
       {!canEdit && (

@@ -22,7 +22,10 @@ export const metadata: Metadata = {
 };
 
 export default async function AuthLayout({ children }: { children: ReactNode }) {
-  const branding = await getBrandingSettings();
+  // Skips the 60s in-process cache — login/signup/forgot-password are
+  // low-traffic, logged-out surfaces, so a fresh DB read here is cheap
+  // and guarantees a just-saved branding change never shows stale.
+  const branding = await getBrandingSettings({ skipCache: true });
   return (
     <BrandingProvider
       value={{ siteName: branding.siteName, logoUrl: branding.logoUrl }}

@@ -8,6 +8,7 @@ import {
 } from '@/lib/whatsapp/meta-api'
 import { instanceStatus } from '@/lib/whatsapp/providers/uazapi'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import { getBrandingSettings } from '@/lib/branding/get-branding'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -238,7 +239,7 @@ export async function POST(request: Request) {
     }
 
     // Reject if another account has already claimed this phone_number_id.
-    // wacrm is single-tenant-per-WhatsApp-number — letting two accounts
+    // This deployment is single-tenant-per-WhatsApp-number — letting two accounts
     // bind the same number causes the webhook's `.single()` lookup to
     // throw PGRST116 ("multiple rows"), silently dropping every
     // inbound message. See issue #136. Post-multi-user we key on
@@ -260,10 +261,10 @@ export async function POST(request: Request) {
     }
 
     if (claimed) {
+      const { siteName } = await getBrandingSettings()
       return NextResponse.json(
         {
-          error:
-            'This WhatsApp phone number is already linked to another account on this instance. Each phone number can only be connected to one wacrm user.',
+          error: `This WhatsApp phone number is already linked to another account on this instance. Each phone number can only be connected to one ${siteName ?? 'CRM'} user.`,
         },
         { status: 409 }
       )

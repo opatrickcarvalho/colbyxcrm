@@ -213,7 +213,6 @@ export default function AdminBrandingPage() {
             value={siteName}
             onChange={(e) => setSiteName(e.target.value)}
             maxLength={120}
-            placeholder="wacrm"
           />
           <p className="text-muted-foreground text-xs">
             {t('fieldSiteNameHint')}
