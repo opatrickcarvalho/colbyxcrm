@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HANDLED_EVENT_TYPES } from '@/lib/billing/asaas/events';
 import {
   Select,
   SelectContent,
@@ -394,6 +395,33 @@ export default function AdminBillingSettingsPage() {
               <CardTitle>{tAsaas('webhookTitle')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>{tAsaas('eventsTitle')}</Label>
+                <p className="text-muted-foreground text-xs">
+                  {tAsaas('eventsHint')}
+                </p>
+                <div className="border-border bg-muted/30 flex flex-wrap gap-1.5 rounded-lg border p-3">
+                  {HANDLED_EVENT_TYPES.map((event) => (
+                    <Badge
+                      key={event}
+                      variant="secondary"
+                      className="font-mono"
+                    >
+                      {event}
+                    </Badge>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void copyValue(HANDLED_EVENT_TYPES.join(', '))}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  {tAsaas('eventsCopy')}
+                </Button>
+              </div>
+
               <div className="space-y-1.5">
                 <Label>{tAsaas('webhookUrlLabel')}</Label>
                 <div className="flex gap-2">
