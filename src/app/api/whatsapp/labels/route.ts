@@ -5,18 +5,27 @@ import {
   LabelsNotAvailableError,
   resolveLabelCredentials,
 } from '@/lib/whatsapp/label-write';
-import {
-  editLabel,
-  listLabels,
-  type UazapiLabel,
-} from '@/lib/whatsapp/providers';
+import { editLabel, listLabels } from '@/lib/whatsapp/providers';
 
+type RequireRoleSupabase = Awaited<ReturnType<typeof requireRole>>['supabase'];
+
+/**
+ * Pulls uazapi's current label list into `whatsapp_labels`, then
+ * returns this account's rows in OUR shape (`id` uuid, `color_code`) —
+ * not uazapi's raw `{labelid, name, color}` shape. The two are easy to
+ * conflate (only `name` matches) but the client (LabelsDropdown) keys
+ * and colors every row off `id`/`color_code`; handing back the raw
+ * remote shape made `label.id` and `label.color_code` `undefined` for
+ * every row, which is why every label rendered as the same fallback
+ * color and one checkbox toggling `appliedIds` by `undefined` checked
+ * ALL of them at once (fixed by issue: labels-same-color-until-reopen).
+ */
 async function syncLabels(
-  supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
+  supabase: RequireRoleSupabase,
   accountId: string,
   host: string,
   token: string
-): Promise<UazapiLabel[]> {
+) {
   const remote = await listLabels(host, token);
   if (remote.length > 0) {
     const { error } = await supabase.from('whatsapp_labels').upsert(
@@ -33,7 +42,17 @@ async function syncLabels(
       console.error('[whatsapp labels] sync upsert failed:', error.message);
     }
   }
-  return remote;
+
+  const { data, error: selectErr } = await supabase
+    .from('whatsapp_labels')
+    .select('*')
+    .eq('account_id', accountId)
+    .order('name');
+  if (selectErr) {
+    console.error('[whatsapp labels] reload after sync failed:', selectErr.message);
+    return [];
+  }
+  return data ?? [];
 }
 
 /**
@@ -52,17 +71,8 @@ export async function GET() {
       ctx.supabase,
       ctx.accountId
     );
-    await syncLabels(ctx.supabase, ctx.accountId, host, token);
-
-    const { data, error } = await ctx.supabase
-      .from('whatsapp_labels')
-      .select('*')
-      .eq('account_id', ctx.accountId)
-      .order('name');
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    return NextResponse.json({ labels: data ?? [] });
+    const labels = await syncLabels(ctx.supabase, ctx.accountId, host, token);
+    return NextResponse.json({ labels });
   } catch (error) {
     if (error instanceof LabelsNotAvailableError) {
       return NextResponse.json({ labels: [], unavailable: true });
