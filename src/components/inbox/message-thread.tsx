@@ -320,6 +320,15 @@ export function MessageThread({
     [conversationId],
   );
 
+  // Tracks which conversation the LAST run of the effect below fetched,
+  // so a `resyncToken`-only re-run (tab regains focus, realtime
+  // reconnects) can tell "same thread, catching up in the background"
+  // apart from "the user actually switched conversations". Without
+  // this, every resync blanked the whole thread to a spinner and
+  // reloaded it from scratch — WhatsApp Web never does that; it keeps
+  // the messages on screen and only patches in what changed.
+  const lastFetchedConversationIdRef = useRef<string | undefined>(undefined);
+
   // Fetch messages whenever the selected conversation changes. Kept
   // separate from the unread-reset effect so that incoming messages
   // arriving while the thread is open don't trigger a full refetch —
@@ -329,9 +338,18 @@ export function MessageThread({
 
     const supabase = createClient();
     let cancelled = false;
+    const isConversationChange =
+      lastFetchedConversationIdRef.current !== conversationId;
+    lastFetchedConversationIdRef.current = conversationId;
 
     (async () => {
-      setLoading(true);
+      // Only show the spinner (and blank the already-rendered thread)
+      // when actually switching conversations — the parent already
+      // cleared `messages` for that case. A resync of the SAME thread
+      // fetches quietly in the background and swaps the array in
+      // place once it resolves; React reconciles by message id, so
+      // unaffected bubbles don't even re-render.
+      if (isConversationChange) setLoading(true);
 
       const { data, error } = await supabase
         .from('messages')
@@ -347,7 +365,7 @@ export function MessageThread({
         onMessagesLoadedRef.current(data ?? []);
       }
 
-      if (!cancelled) setLoading(false);
+      if (!cancelled && isConversationChange) setLoading(false);
     })();
 
     return () => {
