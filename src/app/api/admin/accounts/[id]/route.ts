@@ -22,7 +22,9 @@ export async function GET(
 
     const { data: account, error: accountErr } = await db
       .from('accounts')
-      .select('id, name, owner_user_id, status, suspended_at, suspended_reason, created_at')
+      .select(
+        'id, name, owner_user_id, status, suspended_at, suspended_reason, created_at, billing_status, plan_id, plan_expires_at, trial_ends_at, billing_exempt'
+      )
       .eq('id', id)
       .maybeSingle();
 
@@ -47,6 +49,7 @@ export async function GET(
       contactsCountRes,
       conversationsCountRes,
       messagesCountRes,
+      planRes,
     ] = await Promise.all([
       db
         .from('profiles')
@@ -74,10 +77,28 @@ export async function GET(
         })
         .eq('conversations.account_id', id)
         .gte('created_at', thirtyDaysAgo),
+      // Point lookup by id rather than an embed on the accounts query
+      // above — same PGRST200-on-stale-cache reasoning documented in
+      // src/lib/auth/account.ts. Only runs when there's a plan to name.
+      account.plan_id
+        ? db
+            .from('plans')
+            .select('name')
+            .eq('id', account.plan_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
     return NextResponse.json({
       account,
+      billing: {
+        status: account.billing_status ?? null,
+        planId: account.plan_id ?? null,
+        planName: (planRes.data as { name: string } | null)?.name ?? null,
+        planExpiresAt: account.plan_expires_at ?? null,
+        trialEndsAt: account.trial_ends_at ?? null,
+        exempt: account.billing_exempt === true,
+      },
       members: membersRes.data ?? [],
       whatsapp: configRes.data ?? null,
       usage: {
