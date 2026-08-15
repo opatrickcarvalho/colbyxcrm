@@ -357,6 +357,25 @@ export async function POST(
   // branch it fell into the generic "ignored" bucket below and
   // messages.status never advanced past 'sent'.
   if (event === 'messages_update' || event === 'messages.update') {
+    // TEMPORARY DIAGNOSTIC (remove once resolved — see conversation
+    // 2026-08-15): delivery/read ticks never advance past 'sent' even
+    // after the EventType/`.toLowerCase()` crash fix, with zero errors
+    // in uazapi's own `/webhook/errors` log — meaning uazapi is getting
+    // a 200 back, so `messagesFrom(body)` is silently finding nothing
+    // to process. `presence` payloads turned out to carry their data
+    // under a field literally named `event` (an object) instead of
+    // `data`/`message`; messages_update may do the same. Failing loudly
+    // here (instead of the normal `{ok:true}`) makes uazapi record this
+    // exact payload — untouched — in its own error log, which the
+    // `/api/whatsapp/uazapi/sync` diagnostic already surfaces. That's
+    // the only way to see the real shape without a raw-payload log
+    // table, since `console.log` of the body is suppressed in prod.
+    if (messagesFrom(body).length === 0) {
+      return NextResponse.json(
+        { error: 'diagnostic: messages_update yielded no messages', body },
+        { status: 422 }
+      );
+    }
     for (const message of messagesFrom(body)) {
       try {
         const providerMessageId =
