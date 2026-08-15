@@ -37,11 +37,77 @@ import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
  */
 
 interface UazapiWebhookBody {
-  event?: string;
+  /**
+   * The event's NAME only on the `messages`/`groups`/… envelopes uazapi
+   * documents. On others (confirmed for `presence` and `messages_update`
+   * — see {@link UazapiMessagesUpdateEvent}) this same key instead holds
+   * the raw event OBJECT, with the name living in `EventType`. Always
+   * read the name via `typeof body.event === 'string' ? body.event :
+   * body.EventType`, never `body.event || body.EventType` — the object
+   * form is truthy and would win, and calling `.toLowerCase()` on it
+   * throws (this crashed the whole request — every messages_update
+   * delivery — for as long as this route existed; see the 2026-08-15
+   * fix).
+   */
+  event?: string | UazapiMessagesUpdateEvent;
   EventType?: string;
   instance?: string | { id?: string };
   data?: unknown;
   message?: unknown;
+  /** Duplicate of `event.Type` on a messages_update envelope, one level up. */
+  state?: string;
+}
+
+/**
+ * Real shape of `body.event` on a `messages_update` webhook — a Baileys
+ * receipt update, NOT a `Message` object. Discovered from a live
+ * production payload (2026-08-15) after `messagesFrom(body)` silently
+ * matched nothing for months: uazapi does not send one row per changed
+ * message with a `messageid`/`status` pair the way its own `Message`
+ * schema (and this route's original code) assumed. It sends one
+ * *receipt event* that can cover several messages at once.
+ *
+ * Real example:
+ * ```json
+ * {
+ *   "EventType": "messages_update",
+ *   "event": {
+ *     "MessageIDs": ["3EB085123249645CD87B06"],
+ *     "Type": "Delivered",
+ *     "Chat": "557388124552@s.whatsapp.net",
+ *     "Timestamp": 1786753745
+ *   },
+ *   "state": "Delivered",
+ *   "type": "ReadReceipt"
+ * }
+ * ```
+ */
+interface UazapiMessagesUpdateEvent {
+  /** Every message this single receipt covers — batched delivery/read
+   *  acks are normal WhatsApp behaviour (e.g. reading a whole chat at
+   *  once), not an edge case. */
+  MessageIDs?: string[];
+  /** The actual ack level: `Sent` | `Delivered` | `Read` | `Played` | … */
+  Type?: string;
+  Timestamp?: number;
+  Chat?: string;
+}
+
+/** Pulls the message ids + ack status out of a real messages_update
+ *  envelope. `body.event.Type` is the primary source; `body.state`
+ *  (one level up, same value) is a fallback in case a future payload
+ *  omits it from the nested object. */
+function messageUpdatesFromEvent(body: UazapiWebhookBody): {
+  messageIds: string[];
+  status: string | undefined;
+} {
+  const raw =
+    body.event && typeof body.event === 'object' ? body.event : undefined;
+  const messageIds = Array.isArray(raw?.MessageIDs)
+    ? raw.MessageIDs.filter((id): id is string => typeof id === 'string')
+    : [];
+  const status = raw?.Type ?? body.state;
+  return { messageIds, status };
 }
 
 interface UazapiMessage {
@@ -357,31 +423,15 @@ export async function POST(
   // branch it fell into the generic "ignored" bucket below and
   // messages.status never advanced past 'sent'.
   if (event === 'messages_update' || event === 'messages.update') {
-    // TEMPORARY DIAGNOSTIC (remove once resolved — see conversation
-    // 2026-08-15): delivery/read ticks never advance past 'sent' even
-    // after the EventType/`.toLowerCase()` crash fix, with zero errors
-    // in uazapi's own `/webhook/errors` log — meaning uazapi is getting
-    // a 200 back, so `messagesFrom(body)` is silently finding nothing
-    // to process. `presence` payloads turned out to carry their data
-    // under a field literally named `event` (an object) instead of
-    // `data`/`message`; messages_update may do the same. Failing loudly
-    // here (instead of the normal `{ok:true}`) makes uazapi record this
-    // exact payload — untouched — in its own error log, which the
-    // `/api/whatsapp/uazapi/sync` diagnostic already surfaces. That's
-    // the only way to see the real shape without a raw-payload log
-    // table, since `console.log` of the body is suppressed in prod.
-    if (messagesFrom(body).length === 0) {
-      return NextResponse.json(
-        { error: 'diagnostic: messages_update yielded no messages', body },
-        { status: 422 }
-      );
-    }
-    for (const message of messagesFrom(body)) {
+    // Not a `Message`-shaped list — see UazapiMessagesUpdateEvent's doc
+    // comment. One receipt event can cover several message ids, all at
+    // the same ack level, so the status is computed once and applied
+    // to each id rather than read per-entry the way `messages`/group
+    // messages are.
+    const { messageIds, status: rawStatus } = messageUpdatesFromEvent(body);
+    const mappedStatus = toMessagesStatus(rawStatus);
+    for (const providerMessageId of messageIds) {
       try {
-        const providerMessageId =
-          message.messageid || message.id || message.key?.id || null;
-        const rawStatus = message.status ?? message.update?.status;
-        const mappedStatus = toMessagesStatus(rawStatus);
         if (!providerMessageId || !mappedStatus) continue;
 
         // 1) Mirror onto messages, timestamped and ladder-guarded per
