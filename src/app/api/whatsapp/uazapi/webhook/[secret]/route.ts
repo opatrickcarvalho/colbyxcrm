@@ -954,8 +954,11 @@ export async function POST(
         const isGroupMedia = ['image', 'video', 'audio', 'document'].includes(
           groupContentType
         );
+        // See the 1:1 path above: a caption lives in `message.text`, not
+        // a `message.caption` field (uazapi's Message schema has no such
+        // property).
         const groupText = isGroupMedia
-          ? message.caption || ''
+          ? message.text || message.caption || ''
           : message.text ||
             message.caption ||
             (typeof message.content === 'string' ? message.content : '') ||
@@ -1145,12 +1148,19 @@ export async function POST(
       // decryption key, not text a human should ever see. Falling back
       // to it here was the "giant link" bug: nothing downstream could
       // render that string usefully, so it got stored as message text
-      // verbatim. Only a real caption belongs in a media message's text.
-      // Same reasoning for a button reply: show the tapped title, never
-      // the raw response object (`content` is only ever a plain string
-      // here for an ordinary text message — see extractButtonReply).
+      // verbatim. A caption is never in `content` — uazapi's Message
+      // schema puts it in the same `text` field as an ordinary text
+      // message (there is no separate `caption` property on the wire;
+      // `message.caption` was a guess that never matched a real
+      // payload, which is why every inbound image/video/document
+      // arrived with its caption silently dropped). `.caption` is kept
+      // as a harmless fallback only in case some deployment does send
+      // it. Same reasoning for a button reply: show the tapped title,
+      // never the raw response object (`content` is only ever a plain
+      // string here for an ordinary text message — see
+      // extractButtonReply).
       const text = isMedia
-        ? message.caption || ''
+        ? message.text || message.caption || ''
         : buttonReply
           ? buttonReply.title
           : message.text ||

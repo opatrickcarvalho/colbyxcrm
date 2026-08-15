@@ -22,7 +22,11 @@ const MAX_BATCH = 50;
  * nothing ever told WhatsApp the message had been read.
  *
  * Only `customer` messages are marked — marking our own outbound
- * messages read is meaningless and WhatsApp rejects it.
+ * messages read is meaningless and WhatsApp rejects it. Voice notes
+ * are excluded too: WhatsApp only turns a voice note's tick blue once
+ * it's actually played, not just because the chat was opened, so that
+ * one is marked separately by POST /api/messages/[id]/mark-played when
+ * the audio player is actually pressed.
  */
 export async function POST(
   _request: Request,
@@ -41,6 +45,7 @@ export async function POST(
       .eq('conversation_id', conversationId)
       .eq('sender_type', 'customer')
       .not('message_id', 'is', null)
+      .neq('content_type', 'audio')
       .order('created_at', { ascending: false })
       .limit(MAX_BATCH);
 

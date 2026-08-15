@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Download,
   FileText,
   ImageOff,
   Loader2,
   Maximize2,
+  Pause,
+  Play,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -223,18 +225,237 @@ export function MediaVideoBubble({
   );
 }
 
+/** Bar count for the waveform — enough resolution to look like a real
+ *  recording without turning into a solid smear at the bubble's width. */
+const AUDIO_BAR_COUNT = 40;
+
+/**
+ * A small, deterministic (url-seeded) bar pattern so the player never
+ * shows a flat line — while `useAudioPeaks` is still decoding, or for a
+ * browser/CORS combination that can never decode at all. Same shape as
+ * a real waveform, just not derived from the actual audio.
+ */
+function fallbackPeaks(url: string | undefined): number[] {
+  let seed = 0;
+  for (let i = 0; i < (url?.length ?? 0); i++) {
+    seed = (seed * 31 + url!.charCodeAt(i)) >>> 0;
+  }
+  const peaks: number[] = [];
+  for (let i = 0; i < AUDIO_BAR_COUNT; i++) {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    peaks.push(0.25 + ((seed >>> 8) % 1000) / 1000 * 0.65);
+  }
+  return peaks;
+}
+
+/**
+ * Decodes the audio once into real per-bar amplitude peaks, so the
+ * waveform reflects the actual recording — the same effect WhatsApp
+ * Web's voice-note player has, instead of a generic progress bar.
+ * Falls back to {@link fallbackPeaks} on anything that stops decoding
+ * (no Web Audio API, an unsupported codec, a network error): the
+ * player still looks like a voice note rather than breaking.
+ */
+function useAudioPeaks(url: string | undefined): number[] {
+  const [peaks, setPeaks] = useState<number[]>(() => fallbackPeaks(url));
+
+  useEffect(() => {
+    setPeaks(fallbackPeaks(url));
+    if (!url) return;
+
+    const AudioCtxCtor =
+      typeof window !== "undefined"
+        ? window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext
+        : undefined;
+    if (!AudioCtxCtor) return;
+
+    let cancelled = false;
+    let ctx: AudioContext | undefined;
+
+    (async () => {
+      try {
+        const res = await fetch(url);
+        const arrayBuffer = await res.arrayBuffer();
+        ctx = new AudioCtxCtor();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        const channel = audioBuffer.getChannelData(0);
+        const blockSize = Math.max(
+          1,
+          Math.floor(channel.length / AUDIO_BAR_COUNT)
+        );
+        const computed: number[] = [];
+        for (let i = 0; i < AUDIO_BAR_COUNT; i++) {
+          const start = i * blockSize;
+          let sum = 0;
+          for (let j = 0; j < blockSize; j++) {
+            sum += Math.abs(channel[start + j] ?? 0);
+          }
+          computed.push(sum / blockSize);
+        }
+        const max = Math.max(...computed, 0.0001);
+        if (!cancelled) {
+          setPeaks(computed.map((v) => Math.max(0.08, v / max)));
+        }
+      } catch {
+        // Fallback pattern set above already stands.
+      } finally {
+        void ctx?.close();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return peaks;
+}
+
+function formatAudioTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+const PLAYBACK_RATES = [1, 1.5, 2] as const;
+
 export function MediaAudioBubble({
   message,
   t,
+  onFirstPlay,
 }: {
   message: Message;
   t: Translator;
+  /** Fires once, the first time this voice note is actually played —
+   *  the caller's hook for sending WhatsApp's "played" read receipt at
+   *  the real moment it happens, rather than when the chat is opened. */
+  onFirstPlay?: () => void;
 }) {
   const { downloading, download } = useMediaDownload(message, t);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const peaks = useAudioPeaks(message.media_url);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [rate, setRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
+  const firedFirstPlay = useRef(false);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onTime = () => setCurrentTime(el.currentTime);
+    const onLoaded = () => setDuration(el.duration || 0);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("loadedmetadata", onLoaded);
+    el.addEventListener("durationchange", onLoaded);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("loadedmetadata", onLoaded);
+      el.removeEventListener("durationchange", onLoaded);
+      el.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      el.pause();
+      setIsPlaying(false);
+      return;
+    }
+    el.playbackRate = rate;
+    void el.play();
+    setIsPlaying(true);
+    if (!firedFirstPlay.current) {
+      firedFirstPlay.current = true;
+      onFirstPlay?.();
+    }
+  }, [isPlaying, onFirstPlay, rate]);
+
+  const cycleRate = useCallback(() => {
+    const next =
+      PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(rate) + 1) % PLAYBACK_RATES.length];
+    setRate(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  }, [rate]);
+
+  const seekTo = useCallback(
+    (ratio: number) => {
+      const el = audioRef.current;
+      if (!el || !duration) return;
+      el.currentTime = Math.min(duration, Math.max(0, ratio * duration));
+      setCurrentTime(el.currentTime);
+    },
+    [duration]
+  );
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const playedBars = Math.round(progress * AUDIO_BAR_COUNT);
 
   return (
-    <div className="flex items-center gap-2">
-      <audio src={message.media_url} controls className="max-w-60" />
+    <div className="flex w-64 items-center gap-2">
+      <audio
+        ref={audioRef}
+        src={message.media_url}
+        preload="metadata"
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={isPlaying ? t("pause") : t("play")}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
+      >
+        {isPlaying ? (
+          <Pause className="h-4 w-4 fill-current" />
+        ) : (
+          <Play className="ml-0.5 h-4 w-4 fill-current" />
+        )}
+      </button>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            seekTo((e.clientX - rect.left) / rect.width);
+          }}
+          aria-label={t("seek")}
+          className="flex h-6 w-full items-center gap-[2px]"
+        >
+          {peaks.map((height, i) => (
+            <span
+              key={i}
+              className={cn(
+                "min-w-[2px] flex-1 rounded-full transition-colors",
+                i < playedBars ? "bg-current" : "bg-current/30"
+              )}
+              style={{ height: `${Math.round(height * 100)}%` }}
+            />
+          ))}
+        </button>
+        <div className="flex items-center justify-between text-[10px] tabular-nums opacity-70">
+          <span>{formatAudioTime(currentTime || duration)}</span>
+          <button
+            type="button"
+            onClick={cycleRate}
+            aria-label={t("playbackSpeed")}
+            className="rounded px-1 font-semibold hover:bg-current/10"
+          >
+            {rate}×
+          </button>
+        </div>
+      </div>
+
       <MediaActionButton
         icon={Download}
         label={t("download")}

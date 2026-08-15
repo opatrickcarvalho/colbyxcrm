@@ -862,9 +862,15 @@ export function createUazapiProvider(
         '/send/media',
         {
           number: args.to,
-          // MediaKind's four values (image/video/document/audio) are
-          // all present in uazapi's enum, so the kinds map unchanged.
-          type: args.kind,
+          // image/video/document map straight onto uazapi's enum, but
+          // `type: "audio"` sends a plain audio-file attachment — no
+          // waveform, no mic bubble, and it renders on the recipient's
+          // phone looking like a forwarded/generic file rather than a
+          // voice note. uazapi's own docs send audio as `type: "ptt"`
+          // (Push-To-Talk) specifically to get the native voice-message
+          // bubble a real phone produces; `myaudio` is the documented
+          // alternative. Every other kind is unaffected.
+          type: args.kind === 'audio' ? 'ptt' : args.kind,
           file: args.link,
           text: args.kind === 'audio' ? undefined : args.caption,
           docName: args.kind === 'document' ? args.filename : undefined,

@@ -202,7 +202,28 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <MediaAudioBubble message={message} t={t} />
+            <MediaAudioBubble
+              message={message}
+              t={t}
+              // Only a customer's own voice note has a WhatsApp read
+              // receipt worth sending — marking our own outbound audio
+              // "played" is meaningless and the endpoint no-ops on it
+              // anyway, but there's no reason to even try.
+              onFirstPlay={
+                message.sender_type === 'customer'
+                  ? () => {
+                      void fetch(`/api/messages/${message.id}/mark-played`, {
+                        method: 'POST',
+                      }).catch((err) => {
+                        console.error(
+                          '[message-bubble] mark-played failed:',
+                          err
+                        );
+                      });
+                    }
+                  : undefined
+              }
+            />
           ) : (
             <MediaUnavailable label={t('audio')} t={t} />
           )}

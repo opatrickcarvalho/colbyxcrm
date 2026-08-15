@@ -141,6 +141,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               name={displayName}
               wrapperClassName="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground"
               imgClassName="h-16 w-16 rounded-full object-cover"
+              expandable
+              expandLabel={tThread('viewProfilePhoto')}
             />
             <h3 className="mt-3 text-sm font-semibold text-foreground">
               {displayName}

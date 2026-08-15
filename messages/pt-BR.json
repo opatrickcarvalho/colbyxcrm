@@ -168,6 +168,7 @@
     },
     "messageThread": {
       "backToConversations": "Voltar para conversas",
+      "viewProfilePhoto": "Ver foto do perfil",
       "hideContactPanel": "Ocultar painel de contato",
       "showContactPanel": "Mostrar painel de contato",
       "hideContact": "Ocultar contato",
@@ -278,7 +279,11 @@
       "downloadFailed": "Não foi possível baixar o anexo",
       "viewImage": "Ver imagem",
       "expandVideo": "Ampliar vídeo",
-      "imageAlt": "Imagem enviada"
+      "imageAlt": "Imagem enviada",
+      "play": "Reproduzir",
+      "pause": "Pausar",
+      "seek": "Buscar posição",
+      "playbackSpeed": "Velocidade de reprodução"
     },
     "actions": {
       "reply": "Responder",

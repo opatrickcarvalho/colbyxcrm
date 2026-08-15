@@ -1259,6 +1259,8 @@ export function MessageThread({
             name={displayName}
             wrapperClassName="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium overflow-hidden"
             imgClassName="h-full w-full object-cover"
+            expandable
+            expandLabel={t('viewProfilePhoto')}
           />
           <div className="min-w-0">
             <h2 className="text-foreground truncate text-sm font-semibold">

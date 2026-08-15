@@ -168,6 +168,7 @@
     },
     "messageThread": {
       "backToConversations": "Back to conversations",
+      "viewProfilePhoto": "View profile photo",
       "hideContactPanel": "Hide contact panel",
       "showContactPanel": "Show contact panel",
       "hideContact": "Hide contact",
@@ -278,7 +279,11 @@
       "downloadFailed": "Couldn't download the attachment",
       "viewImage": "View image",
       "expandVideo": "Expand video",
-      "imageAlt": "Shared image"
+      "imageAlt": "Shared image",
+      "play": "Play",
+      "pause": "Pause",
+      "seek": "Seek",
+      "playbackSpeed": "Playback speed"
     },
     "mediaViewer": {
       "counter": "{index} of {total}",
