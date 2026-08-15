@@ -42,6 +42,8 @@ export {
   registerWebhook,
   readWebhooks,
   missingWebhookEvents,
+  getWebhookErrors,
+  type UazapiWebhookError,
   webhookRegistrationFingerprint,
   WEBHOOK_EVENTS,
   type UazapiWebhookRegistration,

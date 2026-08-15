@@ -375,6 +375,45 @@ export function missingWebhookEvents(
   return WEBHOOK_EVENTS.filter((e) => !subscribed.has(e));
 }
 
+/** One entry from {@link getWebhookErrors} — uazapi's own record of a
+ *  failed delivery attempt to our callback URL. */
+export interface UazapiWebhookError {
+  created?: string;
+  url?: string;
+  type?: string;
+  event?: string;
+  message_type?: string;
+  status_code?: number;
+  attempts?: number;
+  error?: string;
+  payload?: unknown;
+}
+
+/**
+ * `GET /webhook/errors` — uazapi's in-memory log of the last 20 failed
+ * webhook deliveries for THIS instance (per its OpenAPI spec's
+ * `getWebhookErrors` operation). This is the one place that can prove
+ * or disprove "uazapi is trying to send messages_update and our
+ * endpoint is rejecting it" versus "uazapi never attempts the send at
+ * all" — readWebhooks()/missingWebhookEvents() above only confirm the
+ * *subscription* is correct, not that deliveries are actually
+ * happening or succeeding. The history is memory-only and resets on
+ * uazapi's own process restart, so an empty array is not proof nothing
+ * ever failed — only that nothing has failed recently.
+ */
+export async function getWebhookErrors(
+  host: string,
+  token: string
+): Promise<UazapiWebhookError[]> {
+  const payload = await uazapiFetch<unknown>({
+    host,
+    path: '/webhook/errors',
+    auth: { kind: 'token', value: token },
+    method: 'GET',
+  });
+  return Array.isArray(payload) ? (payload as UazapiWebhookError[]) : [];
+}
+
 /**
  * Point the instance's webhook at our callback URL. Idempotent — uazapi
  * replaces the registration for the instance wholesale, so calling this

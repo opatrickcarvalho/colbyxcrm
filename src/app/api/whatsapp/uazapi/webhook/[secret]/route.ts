@@ -308,7 +308,22 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const event = (body.event || body.EventType || '').toLowerCase();
+  // `body.EventType` is always the event-name string ("messages",
+  // "messages_update", "presence", …). `body.event` is NOT a reliable
+  // second spelling of it — uazapi's own `presence` payloads (and
+  // likely others) carry a field literally named `event` holding the
+  // raw underlying event OBJECT alongside `EventType`. Preferring
+  // `body.event` when truthy (as this used to) picked that object over
+  // the string, and `.toLowerCase()` on an object threw — an unhandled
+  // exception outside every event handler's own try/catch, so uazapi
+  // recorded a flat 500 for every delivery with no application log to
+  // explain it. That 500 is why delivery/read ticks (`messages_update`)
+  // never advanced past 'sent': the crash happens before the event
+  // switch even runs, so it doesn't matter that the messages_update
+  // branch below is otherwise correct.
+  const event = (
+    typeof body.event === 'string' ? body.event : (body.EventType ?? '')
+  ).toLowerCase();
 
   // Pairing replays up to seven days of chat through this event. We
   // deliberately drop it: importing would create hundreds of contacts

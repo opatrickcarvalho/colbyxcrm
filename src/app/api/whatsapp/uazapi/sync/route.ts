@@ -4,6 +4,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   getInstancePrivacy,
+  getWebhookErrors,
   missingWebhookEvents,
   readWebhooks,
   registerWebhook,
@@ -126,6 +127,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // uazapi's own record of failed deliveries to our callback URL —
+    // the missing half of the picture when `webhook_events_missing` is
+    // empty (subscription looks correct) but ticks still never arrive.
+    // An empty array here is NOT proof nothing ever failed: the log is
+    // memory-only on uazapi's side and resets on their process restart,
+    // so it only covers "recently."
+    let webhookErrors: Awaited<ReturnType<typeof getWebhookErrors>> = [];
+    try {
+      webhookErrors = await getWebhookErrors(host, token);
+    } catch (err) {
+      console.error(
+        '[uazapi/sync] could not read webhook error log:',
+        err instanceof Error ? err.message : err
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       readReceipts: readReceipts ?? null,
@@ -135,6 +152,15 @@ export async function POST(request: Request) {
        * handlers will stay silent.
        */
       webhook_events_missing: webhookEventsMissing,
+      /**
+       * uazapi's last-20 delivery-failure log for this instance's local
+       * webhook. Non-empty means uazapi IS attempting deliveries and
+       * they're failing (timeout, non-2xx, connection refused) — check
+       * `status_code`/`error` on each entry. Empty means either nothing
+       * failed recently, or (see webhook_events_missing) uazapi isn't
+       * attempting the send at all.
+       */
+      webhook_errors: webhookErrors,
     });
   } catch (error) {
     console.error('[uazapi/sync] failed:', error);
