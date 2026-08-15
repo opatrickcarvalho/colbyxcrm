@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { ContentType } from "@/types";
+import type { MediaMessageLike } from "./message-like";
 
 /**
  * Works out the filename to save a chat attachment under.
@@ -125,12 +125,7 @@ export function basenameFromUrl(url: string): string {
   return hasExtension(withoutStamp) ? sanitizeFilename(withoutStamp) : "";
 }
 
-export interface MediaFilenameInput {
-  content_type: ContentType;
-  content_text?: string;
-  media_url?: string;
-  created_at: string;
-}
+export type MediaFilenameInput = MediaMessageLike;
 
 /**
  * Filename for a media message. `mimeType` is what the browser reported

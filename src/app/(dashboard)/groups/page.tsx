@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Users, Plus, Loader2 } from 'lucide-react';
+import { Users, Plus, Loader2, RefreshCw, Search } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
@@ -35,6 +35,14 @@ interface GroupRow {
   campaign_slug: string | null;
   status: 'active' | 'archived';
   created_at: string;
+}
+
+interface AvailableGroup {
+  jid: string;
+  name: string;
+  participantCount: number;
+  localId: string | null;
+  status: 'active' | 'archived' | null;
 }
 
 function CapacityCell({ count, max }: { count: number; max: number | null }) {
@@ -70,6 +78,16 @@ export default function GroupsPage() {
   const [campaignSlug, setCampaignSlug] = useState('');
   const [maxParticipants, setMaxParticipants] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // "Sync from WhatsApp" — pick which of the number's existing groups
+  // (created on the phone, never through this CRM) should show up in
+  // the Groups tab. Fetched lazily, only when the dialog opens.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [availableGroups, setAvailableGroups] = useState<AvailableGroup[]>([]);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [busyJid, setBusyJid] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -140,6 +158,92 @@ export default function GroupsPage() {
     }
   }
 
+  async function loadAvailableGroups() {
+    setPickerLoading(true);
+    setPickerError(null);
+    try {
+      const res = await fetch('/api/whatsapp/groups/available', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? t('picker.errorLoad'));
+      setAvailableGroups(data.data ?? []);
+    } catch (err) {
+      setPickerError(err instanceof Error ? err.message : t('picker.errorLoad'));
+    } finally {
+      setPickerLoading(false);
+    }
+  }
+
+  function openPicker() {
+    setPickerOpen(true);
+    void loadAvailableGroups();
+  }
+
+  /** Merges an add/re-add response into both the picker list and the
+   *  main table, so the agent sees it land without a full page reload. */
+  function upsertGroupRow(row: GroupRow) {
+    setGroups((prev) => {
+      const exists = prev.some((g) => g.id === row.id);
+      return exists ? prev.map((g) => (g.id === row.id ? row : g)) : [row, ...prev];
+    });
+  }
+
+  async function handleAddExisting(group: AvailableGroup) {
+    setBusyJid(group.jid);
+    try {
+      const res = await fetch('/api/whatsapp/groups/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_jid: group.jid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t('picker.addError'));
+        return;
+      }
+      const row = data.data as GroupRow;
+      setAvailableGroups((prev) =>
+        prev.map((g) => (g.jid === group.jid ? { ...g, status: 'active', localId: row.id } : g))
+      );
+      upsertGroupRow(row);
+      toast.success(t('picker.addSuccess'));
+    } catch {
+      toast.error(t('picker.addError'));
+    } finally {
+      setBusyJid(null);
+    }
+  }
+
+  async function handleHideGroup(group: AvailableGroup) {
+    if (!group.localId) return;
+    setBusyJid(group.jid);
+    try {
+      const res = await fetch(`/api/whatsapp/groups/${group.localId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t('picker.hideError'));
+        return;
+      }
+      const row = data.data as GroupRow;
+      setAvailableGroups((prev) =>
+        prev.map((g) => (g.jid === group.jid ? { ...g, status: 'archived' } : g))
+      );
+      upsertGroupRow(row);
+      toast.success(t('picker.hideSuccess'));
+    } catch {
+      toast.error(t('picker.hideError'));
+    } finally {
+      setBusyJid(null);
+    }
+  }
+
+  const filteredAvailableGroups = availableGroups.filter((g) =>
+    g.name.toLowerCase().includes(pickerSearch.trim().toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -166,15 +270,26 @@ export default function GroupsPage() {
           <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <GatedButton
-          canAct={canManage}
-          gateReason="send messages"
-          onClick={() => setDialogOpen(true)}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t('newGroup')}
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <GatedButton
+            canAct={canManage}
+            gateReason="send messages"
+            variant="outline"
+            onClick={openPicker}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t('pickExisting')}
+          </GatedButton>
+          <GatedButton
+            canAct={canManage}
+            gateReason="send messages"
+            onClick={() => setDialogOpen(true)}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            {t('newGroup')}
+          </GatedButton>
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -305,6 +420,97 @@ export default function GroupsPage() {
                 <Plus className="mr-1 h-4 w-4" />
               )}
               {creating ? t('create.creating') : t('create.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('picker.title')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{t('picker.subtitle')}</p>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              placeholder={t('picker.searchPlaceholder')}
+              className="pl-8"
+            />
+          </div>
+          <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+            {pickerLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : pickerError ? (
+              <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+                <p className="text-sm text-red-400">{pickerError}</p>
+                <Button variant="outline" size="sm" onClick={() => void loadAvailableGroups()}>
+                  {t('retry')}
+                </Button>
+              </div>
+            ) : filteredAvailableGroups.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                {availableGroups.length === 0 ? t('noGroupsYet') : t('picker.noResults')}
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {filteredAvailableGroups.map((g) => (
+                  <li
+                    key={g.jid}
+                    className="flex items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{g.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('picker.participants', { count: g.participantCount })}
+                      </p>
+                    </div>
+                    {g.status === 'active' ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs font-medium text-green-500">
+                          {t('picker.added')}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busyJid === g.jid}
+                          onClick={() => void handleHideGroup(g)}
+                        >
+                          {busyJid === g.jid ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            t('picker.hide')
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="shrink-0"
+                        disabled={busyJid === g.jid}
+                        onClick={() => void handleAddExisting(g)}
+                      >
+                        {busyJid === g.jid ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : g.status === 'archived' ? (
+                          t('picker.reactivate')
+                        ) : (
+                          t('picker.add')
+                        )}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPickerOpen(false)}>
+              {t('picker.close')}
             </Button>
           </DialogFooter>
         </DialogContent>

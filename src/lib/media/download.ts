@@ -1,6 +1,6 @@
-import type { Message } from "@/types";
 import { loadMediaBlob, MediaResponseError } from "./blob-cache";
 import { mediaFilename } from "./filename";
+import type { MediaMessageLike } from "./message-like";
 
 /**
  * Save a chat attachment to the agent's machine.
@@ -16,7 +16,9 @@ import { mediaFilename } from "./filename";
  * Throws so the caller can toast; the only silent path is the new-tab
  * fallback below.
  */
-export async function downloadMediaMessage(message: Message): Promise<void> {
+export async function downloadMediaMessage(
+  message: MediaMessageLike,
+): Promise<void> {
   const url = message.media_url;
   if (!url) throw new Error("This message has no attachment.");
 

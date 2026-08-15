@@ -931,6 +931,26 @@
         "error": "Não foi possível criar o grupo.",
         "nameRequired": "O nome do grupo é obrigatório.",
         "participantsRequired": "Adicione ao menos um participante."
+      },
+      "pickExisting": "Sincronizar do WhatsApp",
+      "picker": {
+        "title": "Escolher quais grupos aparecem",
+        "subtitle": "Todos os grupos de WhatsApp que este número já participa. Escolha quais devem aparecer aqui — os demais ficam fora da aba Grupos.",
+        "searchPlaceholder": "Buscar grupos…",
+        "loading": "Carregando grupos…",
+        "errorLoad": "Falha ao carregar os grupos do WhatsApp.",
+        "noResults": "Nenhum grupo corresponde à busca.",
+        "participants": "{count} participantes",
+        "add": "Adicionar",
+        "added": "Adicionado",
+        "hide": "Ocultar",
+        "reactivate": "Adicionar de volta",
+        "hidden": "Oculto",
+        "addSuccess": "Grupo adicionado.",
+        "addError": "Não foi possível adicionar o grupo.",
+        "hideSuccess": "Grupo ocultado.",
+        "hideError": "Não foi possível ocultar o grupo.",
+        "close": "Fechar"
       }
     },
     "status": {

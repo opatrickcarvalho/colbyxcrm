@@ -99,8 +99,11 @@ function InboxPageInner() {
   // Groups tab — kept deliberately separate from the conversation state
   // above rather than merged into one interleaved list. Groups have
   // their own table/thread model (whatsapp_groups /
-  // whatsapp_group_messages) and no realtime channel yet; the tab
-  // switch just swaps which list + thread render in the same panels.
+  // whatsapp_group_messages); the tab switch just swaps which list +
+  // thread render in the same panels. `<GroupThread>` owns its own
+  // realtime channel + pagination internally (self-contained, like the
+  // 1:1 thread's per-conversation reactions channel), so there's
+  // nothing to wire up here.
   const [panelMode, setPanelMode] = useState<"contacts" | "groups">(
     "contacts"
   );
@@ -776,7 +779,15 @@ function InboxPageInner() {
                 </span>
               </div>
               <div className="min-h-0 flex-1">
-                <GroupThread groupId={activeGroup.id} canManage={canManageGroups} />
+                {/* `key` forces a clean remount per group — otherwise an
+                    in-progress caption/recording draft, scroll position,
+                    and loaded messages would all leak from the previous
+                    group into the next one. */}
+                <GroupThread
+                  key={activeGroup.id}
+                  groupId={activeGroup.id}
+                  canManage={canManageGroups}
+                />
               </div>
             </div>
           ) : (

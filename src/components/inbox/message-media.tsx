@@ -14,8 +14,8 @@ import {
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/types";
 import { downloadMediaMessage } from "@/lib/media/download";
+import type { MediaMessageLike } from "@/lib/media/message-like";
 import { useMediaBlobUrl } from "@/hooks/use-media-blob-url";
 
 /**
@@ -55,7 +55,7 @@ export function MediaUnavailable({
  * each bubble owns its own in-flight state — a slow 16 MB video shouldn't
  * put a spinner on every other attachment in the thread.
  */
-function useMediaDownload(message: Message, t: Translator) {
+function useMediaDownload(message: MediaMessageLike, t: Translator) {
   const [downloading, setDownloading] = useState(false);
 
   const download = useCallback(async () => {
@@ -118,7 +118,7 @@ export function MediaImageBubble({
   onOpen,
   t,
 }: {
-  message: Message;
+  message: MediaMessageLike;
   /** Opens the thread's lightbox on this message. Omitted ⇒ not clickable. */
   onOpen?: () => void;
   t: Translator;
@@ -187,7 +187,7 @@ export function MediaVideoBubble({
   onOpen,
   t,
 }: {
-  message: Message;
+  message: MediaMessageLike;
   onOpen?: () => void;
   t: Translator;
 }) {
@@ -327,7 +327,7 @@ export function MediaAudioBubble({
   t,
   onFirstPlay,
 }: {
-  message: Message;
+  message: MediaMessageLike;
   t: Translator;
   /** Fires once, the first time this voice note is actually played —
    *  the caller's hook for sending WhatsApp's "played" read receipt at
@@ -470,7 +470,7 @@ export function MediaDocumentBubble({
   message,
   t,
 }: {
-  message: Message;
+  message: MediaMessageLike;
   t: Translator;
 }) {
   const { downloading, download } = useMediaDownload(message, t);

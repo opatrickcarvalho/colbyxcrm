@@ -231,6 +231,7 @@ export function MessageThread({
   const t = useTranslations('Inbox.messageThread');
   const tTimer = useTranslations('Inbox.sessionTimer');
   const tQuote = useTranslations('Inbox.replyQuote');
+  const tMedia = useTranslations('Inbox.mediaViewer');
 
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -1015,10 +1016,6 @@ export function MessageThread({
     return map;
   }, [messages]);
 
-  // Images + videos in the thread, in order — the set the media viewer
-  // pages through with ← / →.
-  const mediaGallery = useMemo(() => collectMediaGallery(messages), [messages]);
-
   // Bucket reactions by their target message_id for O(1) per-bubble lookup.
   const reactionsByMessageId = useMemo(() => {
     const map = new Map<string, MessageReaction[]>();
@@ -1073,6 +1070,16 @@ export function MessageThread({
   }, []);
 
   const contactDisplayName = contact?.name || contact?.phone || 'Customer';
+
+  // Images + videos in the thread, in order — the set the media viewer
+  // pages through with ← / →.
+  const mediaGallery = useMemo(
+    () =>
+      collectMediaGallery(messages, (m) =>
+        m.sender_type === 'customer' ? contactDisplayName : tMedia('you')
+      ),
+    [messages, contactDisplayName, tMedia]
+  );
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
@@ -1659,7 +1666,6 @@ export function MessageThread({
         items={mediaGallery}
         activeId={mediaMessageId}
         onActiveIdChange={handleMediaChange}
-        contactLabel={contactDisplayName}
       />
     </div>
   );

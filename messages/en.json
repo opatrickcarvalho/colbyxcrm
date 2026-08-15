@@ -931,6 +931,26 @@
         "error": "Couldn't create the group.",
         "nameRequired": "Group name is required.",
         "participantsRequired": "Add at least one participant."
+      },
+      "pickExisting": "Sync from WhatsApp",
+      "picker": {
+        "title": "Choose which groups appear",
+        "subtitle": "Every WhatsApp group this number already belongs to. Pick the ones you want tracked here — the rest stay off the Groups tab.",
+        "searchPlaceholder": "Search groups…",
+        "loading": "Loading groups…",
+        "errorLoad": "Failed to load groups from WhatsApp.",
+        "noResults": "No groups match your search.",
+        "participants": "{count} participants",
+        "add": "Add",
+        "added": "Added",
+        "hide": "Hide",
+        "reactivate": "Re-add",
+        "hidden": "Hidden",
+        "addSuccess": "Group added.",
+        "addError": "Could not add the group.",
+        "hideSuccess": "Group hidden.",
+        "hideError": "Could not hide the group.",
+        "close": "Close"
       }
     },
     "status": {

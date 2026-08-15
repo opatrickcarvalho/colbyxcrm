@@ -18,16 +18,24 @@ function msg(
   };
 }
 
+/** Same resolver every 1:1-thread call site uses in practice. */
+function authorLabel(message: Message): string {
+  return message.sender_type === "customer" ? "Customer" : "You";
+}
+
 describe("collectMediaGallery", () => {
   it("keeps images and videos in thread order and nothing else", () => {
-    const items = collectMediaGallery([
-      msg("t1", "text", { content_text: "hi" }),
-      msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),
-      msg("a1", "audio", { media_url: "/api/whatsapp/media/2" }),
-      msg("v1", "video", { media_url: "/api/whatsapp/media/3" }),
-      msg("d1", "document", { media_url: "/api/whatsapp/media/4" }),
-      msg("i2", "image", { media_url: "https://x.supabase.co/photo.png" }),
-    ]);
+    const items = collectMediaGallery(
+      [
+        msg("t1", "text", { content_text: "hi" }),
+        msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),
+        msg("a1", "audio", { media_url: "/api/whatsapp/media/2" }),
+        msg("v1", "video", { media_url: "/api/whatsapp/media/3" }),
+        msg("d1", "document", { media_url: "/api/whatsapp/media/4" }),
+        msg("i2", "image", { media_url: "https://x.supabase.co/photo.png" }),
+      ],
+      authorLabel,
+    );
 
     expect(items.map((i) => i.messageId)).toEqual(["i1", "v1", "i2"]);
     expect(items.map((i) => i.kind)).toEqual(["image", "video", "image"]);
@@ -37,56 +45,71 @@ describe("collectMediaGallery", () => {
     // Meta refusing to verify the id (webhook's verifyAndBuildUrl → null) or
     // expiring it later both land here — the bubble shows "unavailable", so
     // the viewer must not offer a blank frame to page onto.
-    const items = collectMediaGallery([
-      msg("i1", "image"),
-      msg("i2", "image", { media_url: "" }),
-      msg("i3", "image", { media_url: "/api/whatsapp/media/9" }),
-    ]);
+    const items = collectMediaGallery(
+      [
+        msg("i1", "image"),
+        msg("i2", "image", { media_url: "" }),
+        msg("i3", "image", { media_url: "/api/whatsapp/media/9" }),
+      ],
+      authorLabel,
+    );
     expect(items.map((i) => i.messageId)).toEqual(["i3"]);
   });
 
-  it("carries the caption, direction and the row itself", () => {
-    const [item] = collectMediaGallery([
-      msg("i1", "image", {
-        media_url: "/api/whatsapp/media/1",
-        content_text: "the receipt",
-        sender_type: "agent",
-      }),
-    ]);
+  it("carries the caption, author label and the row itself", () => {
+    const [item] = collectMediaGallery(
+      [
+        msg("i1", "image", {
+          media_url: "/api/whatsapp/media/1",
+          content_text: "the receipt",
+          sender_type: "agent",
+        }),
+      ],
+      authorLabel,
+    );
 
     expect(item.caption).toBe("the receipt");
-    expect(item.fromCustomer).toBe(false);
-    expect(item.message.id).toBe("i1");
+    expect(item.authorLabel).toBe("You");
+    expect(item.message).toEqual(
+      expect.objectContaining({ media_url: "/api/whatsapp/media/1" }),
+    );
   });
 
   it("treats an empty caption as no caption", () => {
-    const [item] = collectMediaGallery([
-      msg("i1", "image", { media_url: "/api/whatsapp/media/1", content_text: "" }),
-    ]);
+    const [item] = collectMediaGallery(
+      [msg("i1", "image", { media_url: "/api/whatsapp/media/1", content_text: "" })],
+      authorLabel,
+    );
     expect(item.caption).toBeUndefined();
   });
 
-  it("counts a bot-sent image as ours, not the customer's", () => {
-    const [item] = collectMediaGallery([
-      msg("i1", "image", {
-        media_url: "/api/whatsapp/media/1",
-        sender_type: "bot",
-      }),
-    ]);
-    expect(item.fromCustomer).toBe(false);
+  it("lets the caller resolve a group sender's name instead of you/customer", () => {
+    const [item] = collectMediaGallery(
+      [
+        msg("i1", "image", {
+          media_url: "/api/whatsapp/media/1",
+          sender_type: "customer",
+        }),
+      ],
+      () => "Maria",
+    );
+    expect(item.authorLabel).toBe("Maria");
   });
 
   it("returns nothing for a thread with no media", () => {
-    expect(collectMediaGallery([msg("t1", "text")])).toEqual([]);
-    expect(collectMediaGallery([])).toEqual([]);
+    expect(collectMediaGallery([msg("t1", "text")], authorLabel)).toEqual([]);
+    expect(collectMediaGallery([], authorLabel)).toEqual([]);
   });
 });
 
 describe("galleryIndexOf", () => {
-  const items = collectMediaGallery([
-    msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),
-    msg("i2", "image", { media_url: "/api/whatsapp/media/2" }),
-  ]);
+  const items = collectMediaGallery(
+    [
+      msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),
+      msg("i2", "image", { media_url: "/api/whatsapp/media/2" }),
+    ],
+    authorLabel,
+  );
 
   it("finds the open item", () => {
     expect(galleryIndexOf(items, "i2")).toBe(1);

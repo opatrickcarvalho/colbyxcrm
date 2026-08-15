@@ -109,6 +109,7 @@ export async function PATCH(
       is_locked,
       max_participants,
       campaign_slug,
+      status,
     } = body as {
       name?: string;
       description?: string;
@@ -117,11 +118,16 @@ export async function PATCH(
       is_locked?: boolean;
       max_participants?: number | null;
       campaign_slug?: string | null;
+      /** Purely local — hides/shows the group in the CRM's Groups tab
+       *  without touching WhatsApp. Unlike DELETE below (which calls
+       *  `leaveGroup`), this never talks to uazapi. */
+      status?: 'active' | 'archived';
     };
 
     const localUpdate: Record<string, unknown> = {};
     if (max_participants !== undefined) localUpdate.max_participants = max_participants;
     if (campaign_slug !== undefined) localUpdate.campaign_slug = campaign_slug || null;
+    if (status !== undefined) localUpdate.status = status;
 
     const needsUazapi =
       name !== undefined ||

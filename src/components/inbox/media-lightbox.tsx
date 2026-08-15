@@ -48,15 +48,12 @@ interface MediaLightboxProps {
   /** `messages.id` of the item on screen; null closes the viewer. */
   activeId: string | null;
   onActiveIdChange: (id: string | null) => void;
-  /** Display name used for customer-sent media. */
-  contactLabel: string;
 }
 
 export function MediaLightbox({
   items,
   activeId,
   onActiveIdChange,
-  contactLabel,
 }: MediaLightboxProps) {
   const t = useTranslations("Inbox.mediaViewer");
 
@@ -115,7 +112,6 @@ export function MediaLightbox({
 
   if (!item) return null;
 
-  const authorLabel = item.fromCustomer ? contactLabel : t("you");
   const timestamp = format(new Date(item.createdAt), "MMM d, yyyy HH:mm");
 
   return (
@@ -129,7 +125,7 @@ export function MediaLightbox({
         {/* pr-9 keeps the toolbar clear of the dialog's own close button. */}
         <DialogHeader className="flex-row items-start gap-3 pr-9">
           <div className="min-w-0 flex-1">
-            <DialogTitle className="truncate">{authorLabel}</DialogTitle>
+            <DialogTitle className="truncate">{item.authorLabel}</DialogTitle>
             <DialogDescription className="truncate text-xs">
               {timestamp}
             </DialogDescription>

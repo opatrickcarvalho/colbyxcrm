@@ -168,6 +168,7 @@
     },
     "messageThread": {
       "backToConversations": "대화 목록으로 돌아가기",
+      "viewProfilePhoto": "프로필 사진 보기",
       "hideContactPanel": "연락처 패널 숨기기",
       "showContactPanel": "연락처 패널 표시",
       "hideContact": "연락처 숨기기",
@@ -278,7 +279,11 @@
       "downloadFailed": "첨부파일을 다운로드할 수 없습니다",
       "viewImage": "이미지 보기",
       "expandVideo": "동영상 확대",
-      "imageAlt": "공유된 이미지"
+      "imageAlt": "공유된 이미지",
+      "play": "재생",
+      "pause": "일시정지",
+      "seek": "탐색",
+      "playbackSpeed": "재생 속도"
     },
     "mediaViewer": {
       "counter": "{total}개 중 {index}번째",
@@ -926,6 +931,26 @@
         "error": "그룹을 만들지 못했습니다.",
         "nameRequired": "그룹 이름은 필수입니다.",
         "participantsRequired": "참가자를 한 명 이상 추가하세요."
+      },
+      "pickExisting": "WhatsApp에서 동기화",
+      "picker": {
+        "title": "표시할 그룹 선택",
+        "subtitle": "이 번호가 이미 참여 중인 모든 WhatsApp 그룹입니다. 여기에 표시할 그룹을 선택하세요 — 나머지는 그룹 탭에 나타나지 않습니다.",
+        "searchPlaceholder": "그룹 검색…",
+        "loading": "그룹을 불러오는 중…",
+        "errorLoad": "WhatsApp에서 그룹을 불러오지 못했습니다.",
+        "noResults": "검색과 일치하는 그룹이 없습니다.",
+        "participants": "참가자 {count}명",
+        "add": "추가",
+        "added": "추가됨",
+        "hide": "숨기기",
+        "reactivate": "다시 추가",
+        "hidden": "숨김",
+        "addSuccess": "그룹이 추가되었습니다.",
+        "addError": "그룹을 추가할 수 없습니다.",
+        "hideSuccess": "그룹을 숨겼습니다.",
+        "hideError": "그룹을 숨길 수 없습니다.",
+        "close": "닫기"
       }
     },
     "status": {

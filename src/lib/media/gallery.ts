@@ -1,4 +1,4 @@
-import type { Message } from "@/types";
+import type { MediaMessageLike } from "./message-like";
 
 /**
  * The set of media in a thread that the lightbox can page through, built
@@ -9,38 +9,68 @@ import type { Message } from "@/types";
  * `media_url` are skipped — that's either media Meta refused to verify
  * (`verifyAndBuildUrl` returns null in the webhook) or media whose bytes
  * Meta has since expired, and both render as "unavailable" in the bubble.
+ *
+ * Generic over any row shape that carries `MediaMessageLike` plus an
+ * `id` — both the 1:1 inbox's `Message` and a WhatsApp group's
+ * `GroupMessage` qualify, so the 1:1 thread and the group thread share
+ * one lightbox instead of two.
  */
 
 export type MediaGalleryKind = "image" | "video";
 
 export interface MediaGalleryItem {
-  /** `messages.id` — the lightbox's identity for "which one is open". */
+  /** The source row's `id` — the lightbox's identity for "which one is open". */
   messageId: string;
   url: string;
   kind: MediaGalleryKind;
   /** Caption, when the sender attached one. */
   caption?: string;
   createdAt: string;
-  /** Drives the "You" vs contact-name label in the viewer header. */
-  fromCustomer: boolean;
+  /** Shown in the lightbox header — "You" for an own message, the
+   *  contact's name in a 1:1 thread, or the sender's name in a group. */
+  authorLabel: string;
   /** The row itself, so a download can derive its filename. */
-  message: Message;
+  message: MediaMessageLike;
 }
 
-function galleryKind(message: Message): MediaGalleryKind | null {
-  if (message.content_type === "image") return "image";
-  if (message.content_type === "video") return "video";
+function galleryKind(
+  contentType: MediaMessageLike["content_type"],
+): MediaGalleryKind | null {
+  if (contentType === "image") return "image";
+  if (contentType === "video") return "video";
   return null;
+}
+
+/**
+ * A row the gallery can be built from. Deliberately more permissive than
+ * `MediaMessageLike` on `content_text`/`media_url` — the 1:1 inbox's
+ * `Message` leaves them `undefined`, a WhatsApp group's `GroupMessage`
+ * (a plain DB row) carries `null` instead, and both need to work here
+ * without every caller normalising first.
+ */
+interface MediaSourceRow {
+  id: string;
+  content_type: MediaMessageLike["content_type"];
+  content_text?: string | null;
+  media_url?: string | null;
+  created_at: string;
 }
 
 /**
  * Viewable media in thread order. Order matters — it's what ← / → walk,
  * and the thread hands messages over already sorted by `created_at`.
+ *
+ * `resolveAuthorLabel` is the caller's job because "who sent this" means
+ * different things per thread: the 1:1 inbox only distinguishes "you" vs
+ * the one contact, while a group has to name the actual sender.
  */
-export function collectMediaGallery(messages: Message[]): MediaGalleryItem[] {
+export function collectMediaGallery<T extends MediaSourceRow>(
+  messages: T[],
+  resolveAuthorLabel: (message: T) => string,
+): MediaGalleryItem[] {
   const items: MediaGalleryItem[] = [];
   for (const message of messages) {
-    const kind = galleryKind(message);
+    const kind = galleryKind(message.content_type);
     if (!kind || !message.media_url) continue;
     items.push({
       messageId: message.id,
@@ -48,8 +78,13 @@ export function collectMediaGallery(messages: Message[]): MediaGalleryItem[] {
       kind,
       caption: message.content_text || undefined,
       createdAt: message.created_at,
-      fromCustomer: message.sender_type === "customer",
-      message,
+      authorLabel: resolveAuthorLabel(message),
+      message: {
+        content_type: message.content_type,
+        content_text: message.content_text ?? undefined,
+        media_url: message.media_url ?? undefined,
+        created_at: message.created_at,
+      },
     });
   }
   return items;
