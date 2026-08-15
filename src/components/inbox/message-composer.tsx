@@ -1044,10 +1044,6 @@ export function MessageComposer({
                 <FileText className="mr-2 h-4 w-4" />
                 {t('document')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t('voiceNote')}
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1164,6 +1160,21 @@ export function MessageComposer({
             className="text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 p-0 disabled:opacity-40"
           >
             <Clock className="h-4 w-4" />
+          </GatedButton>
+
+          {/* Voice note — its own button right next to Send, same slot
+              WhatsApp itself uses, rather than buried in the attach menu. */}
+          <GatedButton
+            variant="ghost"
+            size="sm"
+            canAct={!readOnly}
+            gateReason="send messages"
+            disabled={inputsDisabled || busy}
+            title={readOnly ? undefined : t('voiceNote')}
+            onClick={() => void startRecording()}
+            className="text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 p-0 disabled:opacity-40"
+          >
+            <Mic className="h-4 w-4" />
           </GatedButton>
 
           <GatedButton
