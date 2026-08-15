@@ -23,6 +23,14 @@ import { Badge } from '@/components/ui/badge';
 import { uploadAccountMedia } from '@/lib/storage/upload-media';
 import { CHAT_MEDIA_BUCKET } from '@/components/inbox/message-composer';
 import type { GroupContentType } from '@/lib/whatsapp/group-broadcast';
+import {
+  InteractiveBuilder,
+  blankButtonsPayload,
+} from '@/components/interactive/interactive-builder';
+import {
+  validateInteractivePayload,
+  type InteractiveMessagePayload,
+} from '@/lib/whatsapp/interactive';
 import { renderMessage, validateSpintax, countVariants } from '@/lib/campaigns/spintax';
 import {
   AudiencePicker,
@@ -80,6 +88,8 @@ export default function NewGroupBroadcastPage() {
   const [mediaUrl, setMediaUrl] = useState('');
   const [filename, setFilename] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [interactivePayload, setInteractivePayload] =
+    useState<InteractiveMessagePayload>(blankButtonsPayload());
 
   const [audience, setAudience] = useState<AudienceSelection>(EMPTY_AUDIENCE_SELECTION);
   const [saveAudienceAs, setSaveAudienceAs] = useState('');
@@ -179,10 +189,18 @@ export default function NewGroupBroadcastPage() {
   }
 
   const isMedia = MEDIA_TYPES.includes(contentType);
-  const hasContent =
-    contentType === 'text' ? contentText.trim().length > 0 : mediaUrl.length > 0;
+  const isInteractive = contentType === 'interactive';
+  const hasContent = isInteractive
+    ? validateInteractivePayload(interactivePayload).ok
+    : contentType === 'text'
+      ? contentText.trim().length > 0
+      : mediaUrl.length > 0;
   const hasAudience =
     audience.contactIds.length > 0 || audience.groupIds.length > 0 || audience.phones.length > 0;
+  // Interactive campaigns can't reach WhatsApp groups (see the API
+  // route's guard) — block submission here too rather than letting the
+  // request round-trip just to get a 400 back.
+  const hasGroupTarget = audience.groupIds.length > 0;
   const windowValid = !windowEnabled || (windowStart && windowEnd && windowDays.size > 0);
   const jitterNum = Number(delayJitterPct);
   const delayNum = Number(delaySeconds);
@@ -191,6 +209,7 @@ export default function NewGroupBroadcastPage() {
     name.trim().length > 0 &&
     hasAudience &&
     hasContent &&
+    !(isInteractive && hasGroupTarget) &&
     spintaxCheck.ok &&
     Number.isFinite(delayNum) &&
     delayNum >= 1 &&
@@ -239,9 +258,10 @@ export default function NewGroupBroadcastPage() {
         body: JSON.stringify({
           name: name.trim(),
           content_type: contentType,
-          content_text: contentText.trim() || undefined,
-          media_url: mediaUrl || undefined,
+          content_text: isInteractive ? undefined : contentText.trim() || undefined,
+          media_url: isInteractive ? undefined : mediaUrl || undefined,
           filename: contentType === 'document' ? filename || undefined : undefined,
+          interactive_payload: isInteractive ? interactivePayload : undefined,
           delay_seconds: delayNum,
           delay_jitter_pct: jitterNum,
           scheduled_at: scheduledDate ? scheduledDate.toISOString() : undefined,
@@ -298,6 +318,9 @@ export default function NewGroupBroadcastPage() {
       <Card>
         <CardContent className="space-y-3 pt-6">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionAudience')}</h2>
+          {isInteractive && hasGroupTarget && (
+            <p className="text-xs text-red-400">{t('interactive.groupsUnsupportedError')}</p>
+          )}
           <AudiencePicker
             selection={audience}
             onSelectionChange={setAudience}
@@ -311,12 +334,14 @@ export default function NewGroupBroadcastPage() {
         <CardContent className="space-y-5 pt-6">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">{t('sectionMessage')}</h2>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
-                <FileText className="size-3.5" />
-                {t('templates.loadButton')}
-              </Button>
-            </div>
+            {!isInteractive && (
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
+                  <FileText className="size-3.5" />
+                  {t('templates.loadButton')}
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -339,11 +364,25 @@ export default function NewGroupBroadcastPage() {
                 <SelectItem value="video">{t('contentType.video')}</SelectItem>
                 <SelectItem value="document">{t('contentType.document')}</SelectItem>
                 <SelectItem value="audio">{t('contentType.audio')}</SelectItem>
+                <SelectItem value="interactive">{t('contentType.interactive')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {contentType !== 'audio' && (
+          {isInteractive && (
+            <div className="space-y-2">
+              <InteractiveBuilder
+                value={interactivePayload}
+                onChange={setInteractivePayload}
+                layout="vertical"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('interactive.groupsUnsupportedHint')}
+              </p>
+            </div>
+          )}
+
+          {!isInteractive && contentType !== 'audio' && (
             <div className="space-y-2">
               <Label htmlFor="campaign-text">
                 {contentType === 'text' ? t('messageLabel') : t('captionLabel')}
@@ -451,12 +490,14 @@ export default function NewGroupBroadcastPage() {
             </div>
           )}
 
-          <div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
-              <Save className="size-3.5" />
-              {t('templates.saveButton')}
-            </Button>
-          </div>
+          {!isInteractive && (
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setTemplatePickerOpen(true)}>
+                <Save className="size-3.5" />
+                {t('templates.saveButton')}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

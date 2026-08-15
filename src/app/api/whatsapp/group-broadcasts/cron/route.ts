@@ -7,6 +7,7 @@ import {
   GroupsNotAvailableError,
 } from '@/lib/whatsapp/providers/uazapi-groups'
 import { sendGroupContent, type GroupContentType } from '@/lib/whatsapp/group-broadcast'
+import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { isWithinWindow, type SendWindow } from '@/lib/campaigns/schedule'
 
 /** The campaign fields this route reads, shared by the cache and the guard. */
@@ -16,6 +17,7 @@ interface CampaignRow {
   content_text: string | null
   media_url: string | null
   filename: string | null
+  interactive_payload: InteractiveMessagePayload | null
   window_start: string | null
   window_end: string | null
   window_days: number[] | null
@@ -101,7 +103,7 @@ export async function GET(request: Request) {
     const { data } = await admin
       .from('whatsapp_group_broadcasts')
       .select(
-        'account_id, content_type, content_text, media_url, filename, window_start, window_end, window_days, timezone'
+        'account_id, content_type, content_text, media_url, filename, interactive_payload, window_start, window_end, window_days, timezone'
       )
       .eq('id', id)
       .single()
@@ -173,6 +175,17 @@ export async function GET(request: Request) {
       }
 
       if (kind === 'group') {
+        // Defense in depth — the API route already rejects an
+        // interactive campaign that has any group target, so this
+        // should be unreachable. sendGroupContent()'s payload type
+        // excludes 'interactive' entirely (WhatsApp doesn't support
+        // buttons in group chats), so this must be caught before that
+        // call, not left to a type error at runtime.
+        if (broadcast.content_type === 'interactive') {
+          await fail('Interactive campaigns cannot target groups')
+          continue
+        }
+
         const { data: group } = await admin
           .from('whatsapp_groups')
           .select('group_jid, account_id')
@@ -187,7 +200,7 @@ export async function GET(request: Request) {
         const provider = createUazapiProvider({ host: creds.host, token: creds.token })
 
         const result = await sendGroupContent(provider, group.group_jid as string, {
-          content_type: broadcast.content_type as GroupContentType,
+          content_type: broadcast.content_type as Exclude<GroupContentType, 'interactive'>,
           content_text: broadcast.content_text as string | null,
           media_url: broadcast.media_url as string | null,
           filename: broadcast.filename as string | null,
@@ -259,6 +272,7 @@ export async function GET(request: Request) {
           contentText: messageText,
           mediaUrl: broadcast.media_url as string | null,
           filename: broadcast.filename as string | null,
+          interactivePayload: broadcast.interactive_payload,
         })
 
         await admin

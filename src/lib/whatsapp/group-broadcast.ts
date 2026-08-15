@@ -10,7 +10,19 @@ import type { WhatsAppProvider } from '@/lib/whatsapp/providers/types';
  */
 export const SUGGESTED_DELAY_SECONDS = 8;
 
-export const GROUP_CONTENT_TYPES = ['text', 'image', 'document', 'audio', 'video'] as const;
+// 'interactive' (reply-buttons) campaigns are contact/phone-only — see
+// the API route's group-target guard and the cron's defense-in-depth
+// check. Never reaches sendGroupContent() below, whose payload type
+// excludes it accordingly: WhatsApp doesn't support buttons in group
+// chats, and the group send path has no interactive branch.
+export const GROUP_CONTENT_TYPES = [
+  'text',
+  'image',
+  'document',
+  'audio',
+  'video',
+  'interactive',
+] as const;
 export type GroupContentType = (typeof GROUP_CONTENT_TYPES)[number];
 export const GROUP_MEDIA_CONTENT_TYPES = new Set<GroupContentType>([
   'image',
@@ -33,7 +45,8 @@ export async function resolveGroupBroadcastDelaySeconds(
 }
 
 export interface GroupContentPayload {
-  content_type: GroupContentType;
+  /** Never 'interactive' — callers must not route an interactive campaign here. */
+  content_type: Exclude<GroupContentType, 'interactive'>;
   content_text?: string | null;
   media_url?: string | null;
   filename?: string | null;

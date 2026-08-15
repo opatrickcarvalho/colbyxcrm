@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { validateSendMessageParams, SendMessageError } from '@/lib/whatsapp/send-message';
+import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import {
   GROUP_CONTENT_TYPES,
   resolveGroupBroadcastDelaySeconds,
@@ -106,6 +107,7 @@ export async function POST(request: Request) {
       content_text,
       media_url,
       filename,
+      interactive_payload,
       // Legacy top-level shape — kept working so existing callers don't break.
       group_ids: legacyGroupIds,
       delay_seconds,
@@ -124,6 +126,7 @@ export async function POST(request: Request) {
       content_text?: string | null;
       media_url?: string | null;
       filename?: string | null;
+      interactive_payload?: InteractiveMessagePayload | null;
       group_ids?: string[];
       delay_seconds?: number;
       delay_jitter_pct?: number;
@@ -167,6 +170,7 @@ export async function POST(request: Request) {
         messageType: content_type,
         contentText: content_text,
         mediaUrl: media_url,
+        interactivePayload: interactive_payload,
       });
     } catch (err) {
       if (err instanceof SendMessageError) {
@@ -242,6 +246,21 @@ export async function POST(request: Request) {
     if (totalTargets === 0) {
       return NextResponse.json(
         { error: 'At least one target (group, contact, or phone) is required' },
+        { status: 400 }
+      );
+    }
+
+    // WhatsApp groups don't support reply-button messages, and
+    // sendGroupContent() (the group-jid send path) has no interactive
+    // branch — see group-broadcast.ts's GroupContentPayload. Reject
+    // the mix up front rather than letting some targets silently fail
+    // in the cron.
+    if (content_type === 'interactive' && resolved.groupIds.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Campanhas interativas (com botões) só podem ser enviadas para contatos/telefones, não para grupos.',
+        },
         { status: 400 }
       );
     }
@@ -342,6 +361,7 @@ export async function POST(request: Request) {
         content_text: content_text || null,
         media_url: media_url || null,
         filename: filename || null,
+        interactive_payload: content_type === 'interactive' ? interactive_payload : null,
         delay_seconds: resolvedDelaySeconds,
         delay_jitter_pct: jitterPct,
         window_start: window?.start ?? null,

@@ -1068,7 +1068,12 @@
         "image": "Image",
         "video": "Video",
         "document": "Document",
-        "audio": "Audio"
+        "audio": "Audio",
+        "interactive": "Interactive (with buttons)"
+      },
+      "interactive": {
+        "groupsUnsupportedHint": "Button messages can't be sent to WhatsApp groups — pick only contacts or phone numbers in the audience below.",
+        "groupsUnsupportedError": "Remove the selected groups: button campaigns can only target contacts/phones."
       },
       "messageLabel": "Message",
       "captionLabel": "Caption (optional)",

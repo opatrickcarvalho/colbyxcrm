@@ -112,7 +112,10 @@ export async function POST(
     let providerMessageId: string;
     try {
       const result = await sendGroupContent(provider, group.group_jid, {
-        content_type: content_type as GroupContentType,
+        // Already validated above to be 'text' or a MEDIA_KINDS entry
+        // — never 'interactive' (WhatsApp groups don't support
+        // buttons; sendGroupContent()'s payload type excludes it).
+        content_type: content_type as Exclude<GroupContentType, 'interactive'>,
         content_text,
         media_url,
         filename,

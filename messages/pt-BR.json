@@ -1068,7 +1068,12 @@
         "image": "Imagem",
         "video": "Vídeo",
         "document": "Documento",
-        "audio": "Áudio"
+        "audio": "Áudio",
+        "interactive": "Interativo (com botões)"
+      },
+      "interactive": {
+        "groupsUnsupportedHint": "Mensagens com botões não podem ser enviadas para grupos do WhatsApp — selecione apenas contatos ou números de telefone no público abaixo.",
+        "groupsUnsupportedError": "Remova os grupos selecionados: campanhas com botões só podem ser enviadas para contatos/telefones."
       },
       "messageLabel": "Mensagem",
       "captionLabel": "Legenda (opcional)",
