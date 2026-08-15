@@ -36,6 +36,7 @@ import {
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -657,7 +658,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -805,7 +806,7 @@ function SetTagForm({
               onValueChange={(v) => onUpdateConfig({ tag_id: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -838,23 +839,32 @@ function SetTagForm({
 
 /**
  * Shared loader for both `condition` (subject=tag) and `set_tag`.
- * Falls back to raw UUID input if the endpoint is absent on older
- * deployments — the form remains authorable in that case.
+ *
+ * Queried straight from Supabase (RLS scopes this to the account, same
+ * as the inbox's own tag filter — see conversation-list.tsx) rather
+ * than through an API route: `/api/tags` never existed, so this
+ * previously always failed silently and both forms fell back to a raw
+ * UUID input with nowhere in the product to find that UUID (issue
+ * reported 2026-08-15). Kept as the same graceful fallback — a real
+ * fetch failure just leaves `tags` empty and the raw input still works.
  */
 function useUserTags(): UserTag[] {
   const [tags, setTags] = useState<UserTag[]>([]);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/tags").catch(() => null);
-        if (!res || !res.ok) return;
-        const json = (await res.json()) as { tags?: UserTag[] };
-        if (!cancelled) setTags(json.tags ?? []);
-      } catch {
-        // Tags endpoint absent — caller falls back to raw input.
-      }
-    })();
+    const supabase = createClient();
+    supabase
+      .from("tags")
+      .select("id, name, color")
+      .order("name")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("[flows] failed to load tags:", error.message);
+          return;
+        }
+        setTags((data as UserTag[]) ?? []);
+      });
     return () => {
       cancelled = true;
     };
