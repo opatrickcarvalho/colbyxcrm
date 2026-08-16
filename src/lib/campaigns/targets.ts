@@ -45,6 +45,19 @@ export class TargetValidationError extends Error {
   }
 }
 
+// PostgREST puts `.in(...)` filters in the query string, so a large
+// "select all matching" audience (up to 5000 ids — see the audience
+// picker's SELECT_ALL_CAP) can build a URL long enough to be rejected
+// (400) before it ever reaches the planner. Batch lookups so no single
+// request's id list can grow unbounded.
+const LOOKUP_CHUNK_SIZE = 200;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 /**
  * Validate every group_id / contact_id belongs to `accountId` (never
  * trust client-supplied ids), normalise `phones`, and de-duplicate a
@@ -62,18 +75,22 @@ export async function resolveTargets(
 
   // ---- groups ----
   if (groupIds.length > 0) {
-    const { data: groups, error } = await supabase
-      .from('whatsapp_groups')
-      .select('id, status')
-      .eq('account_id', accountId)
-      .in('id', groupIds);
+    const groups: { id: string; status: string }[] = [];
+    for (const idChunk of chunk(groupIds, LOOKUP_CHUNK_SIZE)) {
+      const { data, error } = await supabase
+        .from('whatsapp_groups')
+        .select('id, status')
+        .eq('account_id', accountId)
+        .in('id', idChunk);
 
-    if (error) {
-      console.error('[campaigns/targets] groups lookup error:', error);
-      throw new TargetValidationError('Failed to validate groups');
+      if (error) {
+        console.error('[campaigns/targets] groups lookup error:', error);
+        throw new TargetValidationError('Failed to validate groups');
+      }
+      groups.push(...((data ?? []) as { id: string; status: string }[]));
     }
 
-    const found = new Set((groups ?? []).map((g) => g.id as string));
+    const found = new Set(groups.map((g) => g.id as string));
     const missing = groupIds.filter((id) => !found.has(id));
     if (missing.length > 0) {
       throw new TargetValidationError(
@@ -93,20 +110,22 @@ export async function resolveTargets(
   // ---- contacts ----
   let contacts: ResolvedContact[] = [];
   if (contactIds.length > 0) {
-    const { data: rows, error } = await supabase
-      .from('contacts')
-      .select('id, name, phone')
-      .eq('account_id', accountId)
-      .in('id', contactIds);
+    const rows: Record<string, unknown>[] = [];
+    for (const idChunk of chunk(contactIds, LOOKUP_CHUNK_SIZE)) {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, name, phone')
+        .eq('account_id', accountId)
+        .in('id', idChunk);
 
-    if (error) {
-      console.error('[campaigns/targets] contacts lookup error:', error);
-      throw new TargetValidationError('Failed to validate contacts');
+      if (error) {
+        console.error('[campaigns/targets] contacts lookup error:', error);
+        throw new TargetValidationError('Failed to validate contacts');
+      }
+      rows.push(...((data ?? []) as Record<string, unknown>[]));
     }
 
-    const found = new Map(
-      (rows ?? []).map((c) => [c.id as string, c as Record<string, unknown>])
-    );
+    const found = new Map(rows.map((c) => [c.id as string, c]));
     const missing = contactIds.filter((id) => !found.has(id));
     if (missing.length > 0) {
       throw new TargetValidationError(
