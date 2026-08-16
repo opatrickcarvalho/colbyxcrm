@@ -1075,6 +1075,29 @@ export function MessageComposer({
                 <Zap className="mr-2 h-4 w-4" />
                 {t('quickReplies')}
               </DropdownMenuItem>
+              {/* AI draft + schedule also live here (in addition to their
+                  own icon buttons, which hide below `sm:`) — eight
+                  fixed h-9 w-9 icon buttons plus the flex-1 textarea
+                  simply don't fit a phone-width composer row (see the
+                  `hidden sm:inline-flex` on those two buttons below).
+                  Duplicated here rather than removed so nothing agents
+                  rely on becomes unreachable on mobile. */}
+              <DropdownMenuItem
+                className="sm:hidden"
+                disabled={drafting}
+                onClick={handleDraft}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {t('draftWithAI')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="sm:hidden"
+                disabled={!text.trim() || sessionExpired}
+                onClick={openScheduleForText}
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                {t('scheduleSend')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1099,7 +1122,7 @@ export function MessageComposer({
             gateReason="send messages"
             disabled={drafting}
             title={readOnly ? undefined : t('draftWithAI')}
-            className="text-muted-foreground hover:text-primary h-9 w-9 shrink-0 p-0"
+            className="text-muted-foreground hover:text-primary hidden h-9 w-9 shrink-0 p-0 sm:inline-flex"
             onClick={handleDraft}
           >
             {drafting ? (
@@ -1144,7 +1167,14 @@ export function MessageComposer({
             // The placeholder text also surfaces the read-only state.
             title={readOnly ? t('readOnlyTitle') : undefined}
             className={cn(
-              'border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none',
+              // `min-w-0` overrides the textarea's default intrinsic
+              // min-content width (browsers size it like an `<input>`
+              // with no `cols` set, ~a few hundred px) — without it,
+              // `flex-1` can't actually shrink the field, and on a
+              // phone-width composer row that alone was enough to push
+              // the row wider than the viewport and clip/overflow the
+              // Send button.
+              'border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 min-w-0 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none',
               (sessionExpired || readOnly) && 'cursor-not-allowed opacity-50'
             )}
           />
@@ -1157,7 +1187,7 @@ export function MessageComposer({
             disabled={!text.trim() || sessionExpired}
             title={readOnly ? undefined : t('scheduleSend')}
             onClick={openScheduleForText}
-            className="text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 p-0 disabled:opacity-40"
+            className="text-muted-foreground hover:text-foreground hidden h-9 w-9 shrink-0 p-0 disabled:opacity-40 sm:inline-flex"
           >
             <Clock className="h-4 w-4" />
           </GatedButton>

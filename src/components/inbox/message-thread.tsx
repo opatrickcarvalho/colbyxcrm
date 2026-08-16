@@ -1291,7 +1291,18 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* `overflow-x-auto` is a safety net, not the primary fix: on a
+            narrow phone, Search + Refresh + Status + Assign + Labels
+            (contact-panel toggle is lg:only, already excluded) can add
+            up to more than a 375px viewport has room for. The ancestor
+            chain is overflow-hidden all the way up (page.tsx's
+            `absolute inset-0 ... overflow-hidden`), so without this the
+            rightmost buttons (Labels, sometimes Assign) would be
+            silently clipped rather than reachable at all. The real
+            fix is hiding each trigger's text label below `sm:` (see
+            Status below, matching Assign/Labels which already did
+            this) so the row fits without scrolling on most phones. */}
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
           {/* Search within this conversation's currently-loaded
               messages — see the search bar rendered below the header
               when `searchOpen`. */}
@@ -1302,7 +1313,7 @@ export function MessageThread({
             aria-pressed={searchOpen}
             title={t('searchInConversation')}
             className={cn(
-              'hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+              'hover:bg-muted hover:text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors',
               searchOpen ? 'text-primary' : 'text-muted-foreground'
             )}
           >
@@ -1349,7 +1360,7 @@ export function MessageThread({
               aria-label={t('refreshConversation')}
               title={t('refresh')}
               className={cn(
-                'text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60'
+                'text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-60'
               )}
             >
               <RefreshCw
@@ -1362,12 +1373,18 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                'hover:bg-muted inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs',
                 currentStatus?.color ?? 'text-muted-foreground'
               )}
             >
-              {currentStatus ? t(`status${currentStatus.label}`) : t('status')}
-              <ChevronDown className="h-3 w-3" />
+              {/* Dot always visible (mobile's only status cue once the
+                  label hides); text follows the same `hidden sm:inline`
+                  pattern the Assign/Labels triggers already use. */}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+              <span className="hidden sm:inline">
+                {currentStatus ? t(`status${currentStatus.label}`) : t('status')}
+              </span>
+              <ChevronDown className="h-3 w-3 shrink-0" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -1389,13 +1406,13 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                'hover:bg-muted inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs',
                 assignedAgentId ? 'text-primary' : 'text-muted-foreground'
               )}
             >
-              <UserPlus className="h-3 w-3" />
+              <UserPlus className="h-3 w-3 shrink-0" />
               <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="h-3 w-3 shrink-0" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -1761,10 +1778,10 @@ function LabelsDropdown({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="text-muted-foreground hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs">
-        <Tags className="h-3 w-3" />
+      <DropdownMenuTrigger className="text-muted-foreground hover:bg-muted inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs">
+        <Tags className="h-3 w-3 shrink-0" />
         <span className="hidden sm:inline">{t('labels')}</span>
-        <ChevronDown className="h-3 w-3" />
+        <ChevronDown className="h-3 w-3 shrink-0" />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"

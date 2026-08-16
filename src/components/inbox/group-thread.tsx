@@ -634,7 +634,10 @@ export function GroupThread({
                 placeholder={t('typeMessage')}
                 rows={1}
                 className={cn(
-                  'border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none'
+                  // See message-composer.tsx's textarea for why min-w-0
+                  // is load-bearing on a flex-1 textarea next to fixed-
+                  // width icon buttons.
+                  'border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 min-w-0 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none'
                 )}
               />
 
