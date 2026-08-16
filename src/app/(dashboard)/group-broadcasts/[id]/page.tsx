@@ -149,14 +149,24 @@ export default function GroupBroadcastDetailPage({
     let cancelled = false;
     (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, name, phone')
-        .in('id', missing);
-      if (cancelled || !data) return;
+      // PostgREST puts `.in(...)` in the query string — a campaign with
+      // thousands of contact targets can build a URL long enough to be
+      // rejected (400), which silently left every one of those targets
+      // showing as "removed" instead of just not-yet-resolved. Chunk it
+      // the same way src/lib/campaigns/targets.ts does server-side.
+      const chunkSize = 200;
+      const found: { id: string; name: string | null; phone: string }[] = [];
+      for (let i = 0; i < missing.length; i += chunkSize) {
+        const { data } = await supabase
+          .from('contacts')
+          .select('id, name, phone')
+          .in('id', missing.slice(i, i + chunkSize));
+        if (data) found.push(...data);
+      }
+      if (cancelled || found.length === 0) return;
       setContactsById((prev) => {
         const next = { ...prev };
-        for (const c of data) next[c.id] = { name: c.name ?? null, phone: c.phone };
+        for (const c of found) next[c.id] = { name: c.name ?? null, phone: c.phone };
         return next;
       });
     })();
