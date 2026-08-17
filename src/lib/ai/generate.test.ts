@@ -204,7 +204,7 @@ describe('generateReply — Gemini', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await generateReply({
-      config: config({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: 'AIza-x' }),
+      config: config({ provider: 'gemini', model: 'gemini-3.5-flash-lite', apiKey: 'AIza-x' }),
       systemPrompt: 'sys',
       messages: [{ role: 'user', content: 'Hello' }],
     })
@@ -216,7 +216,7 @@ describe('generateReply — Gemini', () => {
     })
     const [url, opts] = fetchMock.mock.calls[0]
     expect(url).toContain('generativelanguage.googleapis.com')
-    expect(url).toContain('gemini-2.5-flash')
+    expect(url).toContain('gemini-3.5-flash-lite')
     expect(opts.headers['x-goog-api-key']).toBe('AIza-x')
   })
 
