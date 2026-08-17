@@ -243,26 +243,46 @@ function resolveNodes(
   return out;
 }
 
+/** Random per-send invisible-char count is drawn from this range. */
+const INVISIBLE_CHARS_MIN = 2;
+const INVISIBLE_CHARS_MAX = 4;
+
 /**
- * Zero-width space (U+200B) sprinkled roughly every 12th word, capped at 5
- * per message. Opt-in anti-fingerprinting measure so a byte-diff between
- * two recipients' messages doesn't cleanly line up on whitespace — but some
+ * Zero-width space (U+200B) sprinkled onto a random count (2-4, capped by
+ * how many words the message actually has) of random word positions.
+ * Opt-in anti-fingerprinting measure so a byte-diff between two
+ * recipients' messages doesn't cleanly line up — but a FIXED rule
+ * ("every 12th word", always exactly N of them) is itself a pattern a
+ * bulk-message detector can key on just as easily as no obfuscation at
+ * all, which is why both the count and the positions are re-rolled per
+ * call rather than derived deterministically from the text. Some
  * WhatsApp clients render U+200B as a visible glyph or a line-break
- * opportunity in odd spots, so it's off by default and left to the caller
- * to enable per campaign.
+ * opportunity in odd spots, so it's off by default and left to the
+ * caller to enable per campaign.
  */
-function insertInvisibleChars(text: string): string {
+function insertInvisibleChars(text: string, rng: () => number): string {
   const words = text.split(' ');
-  let inserted = 0;
-  const out = words.map((word, idx) => {
-    const wordNumber = idx + 1;
-    if (wordNumber % 12 === 0 && inserted < 5) {
-      inserted++;
-      return word + '​';
-    }
-    return word;
-  });
-  return out.join(' ');
+  const count = Math.min(
+    words.length,
+    INVISIBLE_CHARS_MIN +
+      pickIndex(INVISIBLE_CHARS_MAX - INVISIBLE_CHARS_MIN + 1, rng)
+  );
+  if (count === 0) return text;
+
+  // Partial Fisher-Yates over the trailing `count` slots — picks
+  // `count` distinct word indices without the bias (or the risk of
+  // re-drawing the same index) that calling pickIndex() in a loop and
+  // discarding duplicates would have.
+  const indices = words.map((_, i) => i);
+  for (let i = indices.length - 1; i >= indices.length - count; i--) {
+    // Clamped the same way pickIndex() is: an rng() that returns
+    // exactly 1 must not push j past i.
+    const j = Math.min(i, Math.floor(rng() * (i + 1)));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const chosen = new Set(indices.slice(indices.length - count));
+
+  return words.map((word, idx) => (chosen.has(idx) ? word + '​' : word)).join(' ');
 }
 
 export function renderMessage(
@@ -287,7 +307,7 @@ export function renderMessage(
   // variable created.
   const collapsed = resolved.replace(/ {2,}/g, ' ').trim();
 
-  return options.invisibleChars ? insertInvisibleChars(collapsed) : collapsed;
+  return options.invisibleChars ? insertInvisibleChars(collapsed, rng) : collapsed;
 }
 
 export function validateSpintax(

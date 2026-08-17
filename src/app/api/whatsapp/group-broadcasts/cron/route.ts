@@ -13,6 +13,7 @@ import { isWithinWindow, type SendWindow } from '@/lib/campaigns/schedule'
 /** The campaign fields this route reads, shared by the cache and the guard. */
 interface CampaignRow {
   account_id: string
+  status: string
   content_type: string
   content_text: string | null
   media_url: string | null
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
     const { data } = await admin
       .from('whatsapp_group_broadcasts')
       .select(
-        'account_id, content_type, content_text, media_url, filename, interactive_payload, window_start, window_end, window_days, timezone'
+        'account_id, status, content_type, content_text, media_url, filename, interactive_payload, window_start, window_end, window_days, timezone'
       )
       .eq('id', id)
       .single()
@@ -134,6 +135,13 @@ export async function GET(request: Request) {
     // targets already staggered into the old window have no way to know.
     // It applies to every recipient kind — the window is a property of
     // the campaign, not of how a given target happens to be addressed.
+    // A paused campaign leaves its pending targets exactly as they are
+    // — pause/resume operate on the campaign row only, not per-target,
+    // so this is the one gate that keeps a paused campaign from having
+    // any of them claimed while resume (which re-plans send_at for
+    // what's still pending) hasn't run yet.
+    if (broadcast && broadcast.status === 'paused') continue
+
     if (broadcast && !isCampaignWindowOpen(broadcast)) continue
 
     const { data: claim } = await admin

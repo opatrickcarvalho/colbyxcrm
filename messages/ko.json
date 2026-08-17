@@ -1076,6 +1076,7 @@
     "status": {
       "pending": "대기 중",
       "sending": "전송 중",
+      "paused": "일시중지됨",
       "processing": "처리 중",
       "sent": "전송됨",
       "failed": "실패",
@@ -1194,6 +1195,15 @@
       "cancel": "캠페인 취소",
       "cancelError": "캠페인을 취소하지 못했습니다.",
       "cancelSuccess": "캠페인이 취소되었습니다.",
+      "pause": "캠페인 일시중지",
+      "pauseError": "캠페인을 일시중지하지 못했습니다.",
+      "pauseSuccess": "캠페인이 일시중지되었습니다.",
+      "resume": "캠페인 재개",
+      "resumeError": "캠페인을 재개하지 못했습니다.",
+      "resumeSuccess": "캠페인이 재개되었습니다 — 대기 중인 발송이 지금부터 다시 예약되었습니다.",
+      "removeTarget": "제거",
+      "removeTargetError": "수신자를 제거하지 못했습니다.",
+      "removeTargetSuccess": "수신자가 캠페인에서 제거되었습니다.",
       "unknownGroup": "삭제된 그룹",
       "unknownContact": "삭제된 연락처",
       "renderedTextLabel": "전송된 텍스트",
@@ -1204,7 +1214,8 @@
         "recipient": "수신자",
         "status": "상태",
         "sendAt": "전송 시각",
-        "error": "오류"
+        "error": "오류",
+        "actions": "작업"
       }
     }
   },

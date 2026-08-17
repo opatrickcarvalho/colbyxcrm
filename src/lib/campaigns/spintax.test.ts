@@ -98,13 +98,27 @@ describe('renderMessage — invisibleChars', () => {
     expect(renderMessage(words).split(ZWSP).length - 1).toBe(0);
   });
 
-  it('inserts a zero-width space after roughly every 12th word, capped at 5', () => {
-    const out = renderMessage(words, { invisibleChars: true });
+  it('inserts a random count (2-4) of zero-width spaces at random positions', () => {
+    const out = renderMessage(words, { invisibleChars: true, rng: () => 0.5 });
     const count = out.split(ZWSP).length - 1;
-    expect(count).toBeGreaterThan(0);
-    expect(count).toBeLessThanOrEqual(5);
+    expect(count).toBeGreaterThanOrEqual(2);
+    expect(count).toBeLessThanOrEqual(4);
     // The stripped text (zero-width spaces removed) must be unchanged.
     expect(out.split(ZWSP).join('')).toBe(words);
+  });
+
+  it('varies the count across calls instead of a fixed formula', () => {
+    const counts = new Set<number>();
+    for (let i = 0; i < 50; i++) {
+      const out = renderMessage(words, { invisibleChars: true });
+      counts.add(out.split(ZWSP).length - 1);
+    }
+    expect(counts.size).toBeGreaterThan(1);
+  });
+
+  it('caps the count at how many words the message actually has', () => {
+    const out = renderMessage('one', { invisibleChars: true });
+    expect(out.split(ZWSP).length - 1).toBe(1);
   });
 });
 

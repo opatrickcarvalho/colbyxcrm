@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, Pause, Play, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -38,7 +38,7 @@ interface TargetRow {
 interface BroadcastDetail {
   id: string;
   name: string;
-  status: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled';
+  status: 'pending' | 'sending' | 'paused' | 'sent' | 'failed' | 'cancelled';
   content_type: string;
   delay_seconds: number;
   delay_jitter_pct?: number;
@@ -99,6 +99,12 @@ export default function GroupBroadcastDetailPage({
   const [broadcast, setBroadcast] = useState<BroadcastDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  // Guards a single row's button while its own request is in flight,
+  // rather than a blanket boolean that would disable every "Remove"
+  // button in the table for one row's request.
+  const [removingTargetId, setRemovingTargetId] = useState<string | null>(null);
   // Fallback name/phone lookup for contact targets — see targetLabel().
   const [contactsById, setContactsById] = useState<
     Record<string, { name: string | null; phone: string }>
@@ -193,6 +199,62 @@ export default function GroupBroadcastDetailPage({
     }
   }
 
+  async function handlePause() {
+    setPausing(true);
+    try {
+      const res = await fetch(`/api/whatsapp/group-broadcasts/${id}/pause`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t('pauseError'));
+        return;
+      }
+      toast.success(t('pauseSuccess'));
+      void load();
+    } finally {
+      setPausing(false);
+    }
+  }
+
+  async function handleResume() {
+    setResuming(true);
+    try {
+      const res = await fetch(`/api/whatsapp/group-broadcasts/${id}/resume`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t('resumeError'));
+        return;
+      }
+      toast.success(t('resumeSuccess'));
+      void load();
+    } finally {
+      setResuming(false);
+    }
+  }
+
+  async function handleRemoveTarget(targetId: string) {
+    setRemovingTargetId(targetId);
+    try {
+      const res = await fetch(`/api/whatsapp/group-broadcasts/${id}/targets/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_ids: [targetId] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t('removeTargetError'));
+        return;
+      }
+      toast.success(t('removeTargetSuccess'));
+      void load();
+    } finally {
+      setRemovingTargetId(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -212,7 +274,15 @@ export default function GroupBroadcastDetailPage({
     );
   }
 
-  const canCancel = broadcast.status === 'pending' || broadcast.status === 'sending';
+  // Cancel is deliberately allowed while paused too — the API's own
+  // guard (cancel/route.ts) only blocks it once the campaign is
+  // already terminal (sent/failed/cancelled itself).
+  const canCancel =
+    broadcast.status === 'pending' ||
+    broadcast.status === 'sending' ||
+    broadcast.status === 'paused';
+  const canPause = broadcast.status === 'pending' || broadcast.status === 'sending';
+  const canResume = broadcast.status === 'paused';
 
   const windowSummary =
     broadcast.window_start && broadcast.window_end
@@ -247,12 +317,34 @@ export default function GroupBroadcastDetailPage({
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">{windowSummary}</p>
         </div>
-        {canCancel && (
-          <Button variant="outline" onClick={handleCancel} disabled={cancelling}>
-            {cancelling ? <Loader2 className="size-4 animate-spin" /> : null}
-            {t('cancel')}
-          </Button>
-        )}
+        <div className="flex shrink-0 gap-2">
+          {canPause && (
+            <Button variant="outline" onClick={handlePause} disabled={pausing}>
+              {pausing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Pause className="size-4" />
+              )}
+              {t('pause')}
+            </Button>
+          )}
+          {canResume && (
+            <Button variant="outline" onClick={handleResume} disabled={resuming}>
+              {resuming ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
+              {t('resume')}
+            </Button>
+          )}
+          {canCancel && (
+            <Button variant="outline" onClick={handleCancel} disabled={cancelling}>
+              {cancelling ? <Loader2 className="size-4 animate-spin" /> : null}
+              {t('cancel')}
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -299,6 +391,7 @@ export default function GroupBroadcastDetailPage({
               <TableHead className="hidden text-muted-foreground sm:table-cell">
                 {t('table.error')}
               </TableHead>
+              <TableHead className="text-muted-foreground" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -320,6 +413,24 @@ export default function GroupBroadcastDetailPage({
                 </TableCell>
                 <TableCell className="hidden text-red-400 sm:table-cell">
                   {target.error_message ?? '—'}
+                </TableCell>
+                <TableCell>
+                  {target.status === 'pending' && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTarget(target.id)}
+                      disabled={removingTargetId === target.id}
+                      title={t('removeTarget')}
+                      aria-label={t('removeTarget')}
+                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                    >
+                      {removingTargetId === target.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <X className="size-4" />
+                      )}
+                    </button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

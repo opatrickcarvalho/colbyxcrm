@@ -1076,6 +1076,7 @@
     "status": {
       "pending": "Pendente",
       "sending": "Enviando",
+      "paused": "Pausada",
       "processing": "Processando",
       "sent": "Enviado",
       "failed": "Falhou",
@@ -1194,6 +1195,15 @@
       "cancel": "Cancelar campanha",
       "cancelError": "Não foi possível cancelar a campanha.",
       "cancelSuccess": "Campanha cancelada.",
+      "pause": "Pausar campanha",
+      "pauseError": "Não foi possível pausar a campanha.",
+      "pauseSuccess": "Campanha pausada.",
+      "resume": "Retomar campanha",
+      "resumeError": "Não foi possível retomar a campanha.",
+      "resumeSuccess": "Campanha retomada — os envios pendentes foram reagendados a partir de agora.",
+      "removeTarget": "Remover",
+      "removeTargetError": "Não foi possível remover o destinatário.",
+      "removeTargetSuccess": "Destinatário removido da campanha.",
       "unknownGroup": "Grupo removido",
       "unknownContact": "Contato removido",
       "renderedTextLabel": "Texto enviado",
@@ -1204,7 +1214,8 @@
         "recipient": "Destinatário",
         "status": "Status",
         "sendAt": "Enviado em",
-        "error": "Erro"
+        "error": "Erro",
+        "actions": "Ações"
       }
     }
   },
