@@ -61,6 +61,22 @@ export function UazapiConnect({
   // 'all' | 'none' | null (unknown / not checked yet), straight from
   // the paired account's WhatsApp privacy settings.
   const [readReceipts, setReadReceipts] = useState<string | null>(null);
+  // /api/whatsapp/uazapi/sync already computes both of these — whether
+  // uazapi's own subscription is missing an event we expect, and its
+  // last-20 delivery-failure log for our callback URL — but until now
+  // the response was read for `readReceipts` only and the rest was
+  // thrown away, so "some messages never arrived" had no self-serve way
+  // to check "is uazapi even trying to deliver them." null = not
+  // checked yet; empty arrays after a sync = checked, healthy.
+  const [webhookIssues, setWebhookIssues] = useState<{
+    missingEvents: string[];
+    errors: {
+      created?: string;
+      event?: string;
+      status_code?: number;
+      error?: string;
+    }[];
+  } | null>(null);
 
   // Held in refs so the polling effect can clear them without listing
   // them as dependencies and restarting itself on every tick.
@@ -168,9 +184,23 @@ export function UazapiConnect({
         return;
       }
       setReadReceipts(data.readReceipts ?? null);
+      const missingEvents = Array.isArray(data.webhook_events_missing)
+        ? data.webhook_events_missing
+        : [];
+      const errors = Array.isArray(data.webhook_errors) ? data.webhook_errors : [];
+      setWebhookIssues(
+        missingEvents.length > 0 || errors.length > 0
+          ? { missingEvents, errors }
+          : null
+      );
       if (data.readReceipts === 'none') {
         toast.warning(
           'Synced, but this WhatsApp account has read receipts turned off — blue ticks cannot arrive until that changes.',
+          { duration: 8000 }
+        );
+      } else if (missingEvents.length > 0) {
+        toast.warning(
+          `Synced, but uazapi is not subscribed to: ${missingEvents.join(', ')} — see details below.`,
           { duration: 8000 }
         );
       } else {
@@ -253,6 +283,39 @@ export function UazapiConnect({
                 >
                   Turn on read receipts
                 </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          {webhookIssues && (
+            <Alert variant="destructive">
+              <AlertTitle>Webhook delivery problem detected</AlertTitle>
+              <AlertDescription className="space-y-2">
+                {webhookIssues.missingEvents.length > 0 && (
+                  <p>
+                    uazapi is not subscribed to:{' '}
+                    <strong>{webhookIssues.missingEvents.join(', ')}</strong> —
+                    those events will never reach this CRM until you sync again.
+                  </p>
+                )}
+                {webhookIssues.errors.length > 0 && (
+                  <div>
+                    <p>
+                      uazapi tried to deliver but failed{' '}
+                      {webhookIssues.errors.length} time
+                      {webhookIssues.errors.length === 1 ? '' : 's'} recently —
+                      this is the likely reason a message can go missing:
+                    </p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs">
+                      {webhookIssues.errors.slice(0, 5).map((e, i) => (
+                        <li key={i}>
+                          {e.created ?? '?'} — {e.event ?? 'unknown event'}
+                          {e.status_code ? ` (HTTP ${e.status_code})` : ''}
+                          {e.error ? `: ${e.error}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </AlertDescription>
             </Alert>
           )}

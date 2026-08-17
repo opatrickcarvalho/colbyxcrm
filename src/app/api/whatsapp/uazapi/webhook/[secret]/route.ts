@@ -13,6 +13,7 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
 import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
+import { isUniqueViolation } from '@/lib/contacts/dedupe';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -1274,15 +1275,15 @@ export async function POST(
 
       const createdAt = toCreatedAt(message.messageTimestamp);
 
-      const { error: insertError } = await db.from('messages').insert({
+      const messageRow = {
         conversation_id: conversationId,
         account_id: config.account_id,
-        sender_type: message.fromMe ? 'agent' : 'customer',
+        sender_type: message.fromMe ? ('agent' as const) : ('customer' as const),
         content_type: contentType,
         content_text: text || null,
         media_url: mediaUrl,
         message_id: providerMessageId,
-        status: message.fromMe ? 'sent' : 'delivered',
+        status: message.fromMe ? ('sent' as const) : ('delivered' as const),
         interactive_reply_id: interactiveReplyId,
         reply_to_message_id: replyToInternalId,
         // An inbound message that yields neither text nor a recognised
@@ -1301,9 +1302,59 @@ export async function POST(
           : {}),
         // Omitted entirely when unparseable, so the column default wins.
         ...(createdAt ? { created_at: createdAt } : {}),
-      });
+      };
+
+      const { error: insertError } = await db.from('messages').insert(messageRow);
 
       if (insertError) {
+        // The `(conversation_id, message_id)` unique index (037) exists
+        // to make a redelivered webhook a no-op. But `message_id` is
+        // uazapi's own id, not something this app controls or can trust
+        // to be unique — the messages_update handler above already notes
+        // "message_id is not unique across the table (numbers can repeat
+        // ids)". Blindly treating every unique-violation as "already
+        // have this one" was silently dropping genuinely new messages
+        // whenever an id got reused — confirmed in production: this
+        // exact constraint fired twice in 3 days. Compare content before
+        // deciding: a true redelivery has identical text, so skipping it
+        // is correct; anything else is a second, distinct message that
+        // must not be lost just because its id collided.
+        if (isUniqueViolation(insertError) && providerMessageId) {
+          const { data: existing } = await db
+            .from('messages')
+            .select('content_text, media_url')
+            .eq('conversation_id', conversationId)
+            .eq('message_id', providerMessageId)
+            .maybeSingle();
+
+          const sameContent =
+            existing &&
+            (existing.content_text ?? null) === (messageRow.content_text ?? null) &&
+            (existing.media_url ?? null) === (messageRow.media_url ?? null);
+
+          if (!sameContent) {
+            // A real, different message collided on id — insert it
+            // anyway under a disambiguated id rather than lose it.
+            // Loud on purpose: this should be rare enough that seeing it
+            // in the logs is useful, not noisy.
+            console.error(
+              '[uazapi/webhook] message_id collision on a DIFFERENT message — inserting under a disambiguated id:',
+              providerMessageId
+            );
+            const { error: retryError } = await db.from('messages').insert({
+              ...messageRow,
+              message_id: `${providerMessageId}#dup-${Date.now()}`,
+            });
+            if (retryError) {
+              console.error(
+                '[uazapi/webhook] disambiguated message insert also failed:',
+                retryError.message
+              );
+            }
+          }
+          continue;
+        }
+
         console.error(
           '[uazapi/webhook] message insert failed:',
           insertError.message
