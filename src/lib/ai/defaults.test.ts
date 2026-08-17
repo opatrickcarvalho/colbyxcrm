@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, HANDOFF_SENTINEL } from './defaults'
+import {
+  buildSystemPrompt,
+  HANDOFF_SENTINEL,
+  DEFAULT_HANDOFF_POLICY,
+} from './defaults'
 
 describe('buildSystemPrompt', () => {
   it('includes the current date/time so relative-date questions are resolvable', () => {
@@ -22,5 +26,24 @@ describe('buildSystemPrompt', () => {
   it('omits the handoff instruction in draft mode', () => {
     const prompt = buildSystemPrompt({ userPrompt: null, mode: 'draft' })
     expect(prompt).not.toContain(HANDOFF_SENTINEL)
+  })
+
+  it('falls back to DEFAULT_HANDOFF_POLICY when the account has no override', () => {
+    const prompt = buildSystemPrompt({ userPrompt: null, mode: 'auto_reply' })
+    expect(prompt).toContain(DEFAULT_HANDOFF_POLICY)
+  })
+
+  it("uses the account's own handoff policy instead of the default when set", () => {
+    const custom = 'Nunca transfira para humano, resolva tudo sozinha.'
+    const prompt = buildSystemPrompt({
+      userPrompt: null,
+      mode: 'auto_reply',
+      handoffPolicy: custom,
+    })
+    expect(prompt).toContain(custom)
+    expect(prompt).not.toContain(DEFAULT_HANDOFF_POLICY)
+    // The sentinel protocol itself must survive regardless — an account
+    // can change WHEN it hands off, never break HOW.
+    expect(prompt).toContain(HANDOFF_SENTINEL)
   })
 })

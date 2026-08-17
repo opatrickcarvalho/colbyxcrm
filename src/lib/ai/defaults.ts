@@ -34,6 +34,23 @@ export const HANDOFF_SENTINEL = '[[HANDOFF]]'
 export const HANDOFF_FALLBACK_MESSAGE =
   'Vou chamar um atendente humano para te ajudar com isso — só um instante, por favor! 🙏'
 
+/**
+ * Default "when should the bot hand off" judgment call — account-
+ * editable (`ai_configs.handoff_policy`, the settings form's "Política
+ * de handoff" field), same as `system_prompt`. This is a judgment call
+ * that legitimately varies per business (some want the bot to never
+ * touch pricing, others are fine with almost anything short of a
+ * complaint), so it lives in data, not code — a hardcoded version of
+ * this exact rule was what caused the bot to hand off on plain
+ * greetings ("tudo certo?") until an account owner could do anything
+ * about it. This is only the fallback used when the field is empty;
+ * `buildSystemPrompt` always appends the fixed, non-editable sentinel
+ * protocol after whichever policy text is in effect, so a customer
+ * edit here can change WHEN it hands off but never break HOW.
+ */
+export const DEFAULT_HANDOFF_POLICY =
+  'Greetings, small talk, and vague check-ins ("oi", "tudo bem?", "tudo certo?", "bom dia") are NOT a reason to hand off — always answer those yourself, warmly and naturally, exactly like a normal reply, even if the business context below has no line that literally matches the words used. Only hand off when the customer explicitly asks for a human, is upset or complaining, or asks a specific question whose factual answer (a price, a policy, an order status, availability) is genuinely absent from the conversation, the business context, and the knowledge base — not merely because no bullet point below matches the message word-for-word.'
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
@@ -96,8 +113,11 @@ export function buildSystemPrompt(args: {
   mode: 'draft' | 'auto_reply'
   /** Knowledge-base excerpts retrieved for the current question. */
   knowledge?: string[]
+  /** Account-editable override for `DEFAULT_HANDOFF_POLICY`. Ignored
+   *  outside auto_reply mode (draft mode never hands off). */
+  handoffPolicy?: string | null
 }): string {
-  const { userPrompt, mode, knowledge } = args
+  const { userPrompt, mode, knowledge, handoffPolicy } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -110,8 +130,16 @@ export function buildSystemPrompt(args: {
   ]
 
   if (mode === 'auto_reply') {
+    const policy = (handoffPolicy && handoffPolicy.trim()) || DEFAULT_HANDOFF_POLICY
     parts.push(
-      `You are replying automatically with no human in the loop. Greetings, small talk, and vague check-ins ("oi", "tudo bem?", "tudo certo?", "bom dia") are NOT a reason to hand off — always answer those yourself, warmly and naturally, exactly like a normal reply, even if the business context below has no line that literally matches the words used. Only hand off when the customer explicitly asks for a human, is upset or complaining, or asks a specific question whose factual answer (a price, a policy, an order status, availability) is genuinely absent from the conversation, the business context, and the knowledge base — not merely because no bullet point below matches the message word-for-word. When you do hand off: do NOT go silent — write one short, warm message in the customer's own language telling them you're bringing in a human teammate and asking them to wait a moment, then end the reply with exactly ${HANDOFF_SENTINEL} right after that message, with nothing after it. A human agent will then take over.`,
+      `You are replying automatically with no human in the loop. ${policy}`,
+    )
+    // Fixed, non-editable — the account's handoff_policy above can only
+    // change WHEN the bot hands off, never the mechanics of HOW, so
+    // generateReply's parsing of ${HANDOFF_SENTINEL} keeps working no
+    // matter what the account typed into that field.
+    parts.push(
+      `When you decide to hand off: do NOT go silent — write one short, warm message in the customer's own language telling them you're bringing in a human teammate and asking them to wait a moment, then end the reply with exactly ${HANDOFF_SENTINEL} right after that message, with nothing after it. A human agent will then take over.`,
     )
   }
 

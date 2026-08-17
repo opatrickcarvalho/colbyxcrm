@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
-import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
+import { AI_PROVIDER_DEFAULT_MODEL, DEFAULT_HANDOFF_POLICY } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
@@ -73,6 +73,7 @@ export function AiConfig() {
   const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
   const [hasStoredEmbeddingsKey, setHasStoredEmbeddingsKey] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [handoffPolicy, setHandoffPolicy] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
@@ -100,6 +101,7 @@ export function AiConfig() {
         setProvider(data.provider);
         setModel(data.model);
         setSystemPrompt(data.system_prompt ?? '');
+        setHandoffPolicy(data.handoff_policy ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
@@ -152,6 +154,7 @@ export function AiConfig() {
     api_key: keyPayload(),
     embeddings_api_key: embeddingsKeyPayload(),
     system_prompt: systemPrompt.trim() || null,
+    handoff_policy: handoffPolicy.trim() || null,
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
@@ -223,6 +226,7 @@ export function AiConfig() {
         setIsActive(false);
         setAutoReplyEnabled(false);
         setSystemPrompt('');
+        setHandoffPolicy('');
         setHandoffAgentId('');
       } else {
         const data = await res.json();
@@ -436,6 +440,21 @@ export function AiConfig() {
                 checked={autoReplyEnabled}
                 onCheckedChange={setAutoReplyEnabled}
                 disabled={disabled || !isActive}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-handoff-policy">{t('handoffPolicy')}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t('handoffPolicyDesc')}
+              </p>
+              <Textarea
+                id="ai-handoff-policy"
+                value={handoffPolicy}
+                onChange={(e) => setHandoffPolicy(e.target.value)}
+                placeholder={DEFAULT_HANDOFF_POLICY}
+                rows={4}
+                disabled={disabled || !autoReplyEnabled}
               />
             </div>
 

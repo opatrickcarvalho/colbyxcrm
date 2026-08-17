@@ -2155,6 +2155,8 @@
       "enableAssistantDesc": "Interruptor geral. Ativa o botão \"Rascunhar com IA\" na caixa de entrada.",
       "autoReply": "Responder automaticamente mensagens recebidas",
       "autoReplyDesc": "O bot responde automaticamente novas mensagens recebidas (somente quando nenhum fluxo as trata e nenhum agente está atribuído). Transfere para um humano quando não consegue ajudar.",
+      "handoffPolicy": "Política de handoff (quando chamar um humano)",
+      "handoffPolicyDesc": "Regras que a IA segue pra decidir quando parar de responder e passar a conversa pra um humano. Deixe em branco para usar o padrão do sistema (mostrado abaixo como exemplo) — edite aqui se ela estiver transferindo cedo demais (ex: em saudações) ou tarde demais.",
       "maxAutoReplies": "Máximo de respostas automáticas por conversa",
       "maxAutoRepliesDesc": "Depois desse número de respostas do bot em uma mesma conversa, o bot fica em silêncio.",
       "handoffTo": "Transferir para",

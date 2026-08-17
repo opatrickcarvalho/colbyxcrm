@@ -2155,6 +2155,8 @@
       "enableAssistantDesc": "Master switch. Turns on the “Draft with AI” button in the inbox.",
       "autoReply": "Auto-reply to inbound messages",
       "autoReplyDesc": "The bot answers new inbound messages automatically (only when no flow handles them and no agent is assigned). Hands off to a human when it can’t help.",
+      "handoffPolicy": "Handoff policy (when to call a human)",
+      "handoffPolicyDesc": "Rules the AI follows to decide when to stop replying and hand the conversation to a human. Leave blank to use the system default (shown below as a placeholder) — edit this if it's handing off too eagerly (e.g. on greetings) or not eagerly enough.",
       "maxAutoReplies": "Max auto-replies per conversation",
       "maxAutoRepliesDesc": "After this many bot replies in one thread, the bot goes quiet.",
       "handoffTo": "Hand off to",

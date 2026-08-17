@@ -18,6 +18,9 @@ export interface AiConfig {
   model: string
   apiKey: string
   systemPrompt: string | null
+  /** Account-editable "when should the bot hand off" override — falls
+   *  back to `DEFAULT_HANDOFF_POLICY` when null/empty. */
+  handoffPolicy: string | null
   isActive: boolean
   autoReplyEnabled: boolean
   autoReplyMaxPerConversation: number
