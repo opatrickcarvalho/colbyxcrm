@@ -3,7 +3,7 @@ import { loadAiConfig } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
-import { buildSystemPrompt } from './defaults'
+import { buildSystemPrompt, HANDOFF_FALLBACK_MESSAGE } from './defaults'
 import { buildHandoffSummary, notifyAiHandoff } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
@@ -154,6 +154,27 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // The customer must never just go silent on handoff — tell them a
+      // human is coming. `text` is normally the model's own courtesy
+      // line (buildSystemPrompt now asks for one before the sentinel);
+      // fall back to a fixed message for the rare case it still replied
+      // with only the sentinel, or nothing at all. Best-effort: a send
+      // failure here must not skip pausing the bot or notifying a human
+      // — the customer already got no answer, don't compound that by
+      // losing the handoff itself too.
+      try {
+        await engineSendText({
+          accountId,
+          userId: configOwnerUserId,
+          conversationId,
+          contactId,
+          text: text.trim() || HANDOFF_FALLBACK_MESSAGE,
+          aiGenerated: true,
+        })
+      } catch (err) {
+        console.error('[ai auto-reply] handoff notice send failed:', err)
+      }
 
       // Make the handoff impossible to miss instead of just sitting
       // quietly in the queue — see notifyAiHandoff's own comment.

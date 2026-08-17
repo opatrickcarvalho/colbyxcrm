@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AiConfig } from './types'
+import { HANDOFF_FALLBACK_MESSAGE } from './defaults'
 
 // Shared, hoisted mock state so the module mocks can close over it.
 const h = vi.hoisted(() => ({
@@ -223,11 +224,19 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
 })
 
 describe('dispatchInboundToAiReply — handoff', () => {
-  it('disables auto-reply, writes a summary, and does not send on handoff', async () => {
+  it('disables auto-reply, writes a summary, and tells the customer a human is coming', async () => {
     h.generateReply.mockResolvedValue({ text: '', handoff: true })
     await dispatchInboundToAiReply(ARGS)
-    expect(h.engineSendText).not.toHaveBeenCalled()
+    // No cap-claim for the handoff notice — it isn't a normal reply.
     expect(h.state.rpcCalls).toHaveLength(0)
+    // Model complied with "just the sentinel" (empty text) → the fixed
+    // fallback line goes out instead, never silence.
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        text: HANDOFF_FALLBACK_MESSAGE,
+      }),
+    )
     expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
     expect(h.state.updatePayload?.ai_handoff_summary).toContain(
       'AI agent handed off',
@@ -264,5 +273,18 @@ describe('dispatchInboundToAiReply — handoff', () => {
     expect(h.state.notificationInserts[0].map((r) => r.user_id)).toEqual([
       'agent-7',
     ])
+  })
+
+  it("sends the model's own courtesy line instead of the fallback when it provided one", async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Vou chamar um atendente humano, só um instante! 🙏',
+      handoff: true,
+    })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Vou chamar um atendente humano, só um instante! 🙏',
+      }),
+    )
   })
 })
