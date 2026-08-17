@@ -268,4 +268,26 @@ describe('generateReply — Gemini', () => {
       }),
     ).rejects.toBeInstanceOf(AiError)
   })
+
+  it('appends a synthetic user turn when the transcript ends on the assistant (the "draft" button on a thread the agent spoke last in)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({ candidates: [{ content: { parts: [{ text: 'Draft reply' }] } }] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await generateReply({
+      config: config({ provider: 'gemini' }),
+      systemPrompt: 'sys',
+      messages: [
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: 'Hello, how can I help?' },
+      ],
+    })
+
+    // Gemini 400s with "Requests ending with a model turn are not
+    // supported" if contents ends on 'model' — the adapter must append
+    // a trailing 'user' turn rather than send the transcript as-is.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.contents[body.contents.length - 1].role).toBe('user')
+  })
 })

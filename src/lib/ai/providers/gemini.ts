@@ -26,6 +26,18 @@ interface GeminiResponse {
  * use `user`/`model` role names (not `assistant`). Same shape problem
  * Anthropic has — merge consecutive turns, then drop any leading
  * assistant/model turn so the transcript always starts on the customer.
+ *
+ * Gemini also (unlike OpenAI, and unlike Anthropic, which treats a
+ * trailing assistant turn as a "continue this" prefill) hard-rejects a
+ * request whose `contents` ENDS on a `model` turn with a 400 "Requests
+ * ending with a model turn are not supported." That happens for real
+ * here: the "draft a reply" button in the inbox can be clicked on a
+ * thread where the agent's own last message is the most recent one (no
+ * new customer message yet) — draft/route.ts's context ends on
+ * `assistant` in that case, which OpenAI/Anthropic handle fine but
+ * Gemini flatly refuses. Append a synthetic user turn asking it to
+ * continue so the request shape is always valid regardless of who
+ * spoke last.
  */
 function normalizeForGemini(
   messages: ChatMessage[],
@@ -38,6 +50,12 @@ function normalizeForGemini(
     merged.length > 0
       ? merged
       : [{ role: 'user' as const, content: '(The customer has not sent a message yet.)' }]
+  if (turns[turns.length - 1].role === 'assistant') {
+    turns.push({
+      role: 'user',
+      content: '(Continue the conversation — write the next message to the customer.)',
+    })
+  }
   return turns.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
