@@ -14,6 +14,9 @@ const h = vi.hoisted(() => ({
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
+    profiles: [] as { user_id: string }[],
+    contact: null as Record<string, unknown> | null,
+    notificationInserts: [] as Record<string, unknown>[][],
   },
 }))
 
@@ -35,6 +38,36 @@ vi.mock('./admin-client', () => ({
             Promise.resolve({ data: h.state.autoResponders, error: null }),
         }
         return chain
+      }
+      if (table === 'profiles') {
+        // notifyAiHandoff's queue-broadcast lookup:
+        // .select().eq().in() → agent/admin/owner members
+        return {
+          select: () => ({
+            eq: () => ({
+              in: () => Promise.resolve({ data: h.state.profiles, error: null }),
+            }),
+          }),
+        }
+      }
+      if (table === 'contacts') {
+        // notifyAiHandoff's contact-name lookup: .select().eq().maybeSingle()
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: h.state.contact, error: null }),
+            }),
+          }),
+        }
+      }
+      if (table === 'notifications') {
+        return {
+          insert: (rows: Record<string, unknown>[]) => {
+            h.state.notificationInserts.push(rows)
+            return Promise.resolve({ error: null })
+          },
+        }
       }
       // conversations
       return {
@@ -91,6 +124,9 @@ beforeEach(() => {
   h.state.claim = true
   h.state.updatePayload = null
   h.state.rpcCalls = []
+  h.state.profiles = [{ user_id: 'agent-a' }, { user_id: 'agent-b' }]
+  h.state.contact = { name: 'Jane Doe', phone: '+15551234567' }
+  h.state.notificationInserts = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
@@ -198,6 +234,20 @@ describe('dispatchInboundToAiReply — handoff', () => {
     )
     // No handoff target configured → conversation left unassigned.
     expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    // No one owns the thread — every agent/admin/owner in the account
+    // gets notified so the handoff doesn't sit unseen in the queue.
+    expect(h.state.notificationInserts).toHaveLength(1)
+    const rows = h.state.notificationInserts[0]
+    expect(rows.map((r) => r.user_id)).toEqual(['agent-a', 'agent-b'])
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        type: 'ai_handoff',
+        conversation_id: 'conv-1',
+        contact_id: 'contact-1',
+      })
+      expect(row.title).toContain('Jane Doe')
+      expect(row.body).toContain('AI agent handed off')
+    }
   })
 
   it('routes to the configured handoff agent on handoff', async () => {
@@ -208,5 +258,11 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+    // A specific handoff agent is configured → notify only them, not
+    // the whole team.
+    expect(h.state.notificationInserts).toHaveLength(1)
+    expect(h.state.notificationInserts[0].map((r) => r.user_id)).toEqual([
+      'agent-7',
+    ])
   })
 })

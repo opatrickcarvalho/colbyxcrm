@@ -4,7 +4,7 @@ import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffSummary, notifyAiHandoff } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
@@ -154,6 +154,16 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // Make the handoff impossible to miss instead of just sitting
+      // quietly in the queue — see notifyAiHandoff's own comment.
+      await notifyAiHandoff(db, {
+        accountId,
+        conversationId,
+        contactId,
+        handoffAgentId: config.handoffAgentId,
+        summary,
+      })
       return
     }
 

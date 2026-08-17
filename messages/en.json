@@ -149,6 +149,7 @@
       "searchPlaceholder": "Search conversations...",
       "filterAll": "All",
       "filterUnread": "Unread",
+      "filterNeedsHuman": "Needs human",
       "filterOpen": "Open",
       "filterPending": "Pending",
       "filterClosed": "Closed",
@@ -164,7 +165,8 @@
       "pinFailed": "Couldn't pin the conversation",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "needsHuman": "AI needs human help on this conversation"
     },
     "messageThread": {
       "backToConversations": "Back to conversations",

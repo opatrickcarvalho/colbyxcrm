@@ -149,6 +149,7 @@
       "searchPlaceholder": "대화 검색...",
       "filterAll": "전체",
       "filterUnread": "읽지 않음",
+      "filterNeedsHuman": "사람 필요",
       "filterOpen": "열림",
       "filterPending": "대기 중",
       "filterClosed": "닫힘",
@@ -164,7 +165,8 @@
       "pinFailed": "대화를 고정할 수 없습니다",
       "noConversations": "대화를 찾을 수 없습니다",
       "noMessagesYet": "아직 메시지가 없습니다",
-      "unknown": "알 수 없음"
+      "unknown": "알 수 없음",
+      "needsHuman": "AI가 이 대화에서 사람의 도움이 필요합니다"
     },
     "messageThread": {
       "backToConversations": "대화 목록으로 돌아가기",

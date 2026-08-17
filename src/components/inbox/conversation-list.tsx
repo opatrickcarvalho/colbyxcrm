@@ -9,7 +9,7 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, ChevronDown, X, Pin } from 'lucide-react';
+import { Search, ChevronDown, X, Pin, Bot } from 'lucide-react';
 import { whatsappLabelColor } from '@/lib/whatsapp/label-colors';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -51,7 +51,7 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   closed: 'bg-muted-foreground',
 };
 
-type InboxFilter = ConversationStatus | 'all' | 'unread';
+type InboxFilter = ConversationStatus | 'all' | 'unread' | 'needsHuman';
 
 export function ConversationList({
   activeConversationId,
@@ -66,6 +66,7 @@ export function ConversationList({
     () => [
       { label: t('filterAll'), value: 'all' },
       { label: t('filterUnread'), value: 'unread' },
+      { label: t('filterNeedsHuman'), value: 'needsHuman' },
       { label: t('filterOpen'), value: 'open' },
       { label: t('filterPending'), value: 'pending' },
       { label: t('filterClosed'), value: 'closed' },
@@ -202,6 +203,8 @@ export function ConversationList({
 
     if (filter === 'unread') {
       result = result.filter((c) => c.unread_count > 0);
+    } else if (filter === 'needsHuman') {
+      result = result.filter((c) => c.ai_autoreply_disabled && !c.assigned_agent_id);
     } else if (filter !== 'all') {
       result = result.filter((c) => c.status === filter);
     }
@@ -543,6 +546,13 @@ function ConversationItem({
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t('unknown');
+  // The bot paused itself here (cap reached or it handed off) and no
+  // human has claimed the thread yet — flag it so it doesn't just sit
+  // unnoticed in the list until someone happens to open it. Once a
+  // human takes over (or the bot resumes and replies again), one of
+  // the two conditions clears and the badge disappears on its own.
+  const needsHuman =
+    conversation.ai_autoreply_disabled && !conversation.assigned_agent_id;
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -599,6 +609,14 @@ function ConversationItem({
                     className="text-muted-foreground h-3 w-3 shrink-0 fill-current"
                     aria-label={t('pinned')}
                   />
+                )}
+                {needsHuman && (
+                  <span title={t('needsHuman')}>
+                    <Bot
+                      className="h-3.5 w-3.5 shrink-0 text-amber-500"
+                      aria-label={t('needsHuman')}
+                    />
+                  </span>
                 )}
                 <span className="text-foreground truncate text-sm font-medium">
                   {displayName}

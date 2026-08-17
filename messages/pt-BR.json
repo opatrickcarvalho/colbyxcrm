@@ -149,6 +149,7 @@
       "searchPlaceholder": "Buscar conversas...",
       "filterAll": "Todas",
       "filterUnread": "Não lidas",
+      "filterNeedsHuman": "Precisam de humano",
       "filterOpen": "Abertas",
       "filterPending": "Pendentes",
       "filterClosed": "Fechadas",
@@ -164,7 +165,8 @@
       "pinFailed": "Não foi possível fixar a conversa",
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
-      "unknown": "Desconhecido"
+      "unknown": "Desconhecido",
+      "needsHuman": "IA precisa de ajuda humana nesta conversa"
     },
     "messageThread": {
       "backToConversations": "Voltar para conversas",
