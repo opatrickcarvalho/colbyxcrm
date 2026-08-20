@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { useTranslations } from 'next-intl';
+import { ptBR, enUS } from 'date-fns/locale';
+import { useTranslations, useLocale } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users } from 'lucide-react';
@@ -29,6 +30,8 @@ interface GroupListProps {
 
 export function GroupList({ activeGroupId, onSelect, resyncToken = 0 }: GroupListProps) {
   const t = useTranslations('Groups.page');
+  const locale = useLocale();
+  const dateFnsLocale = locale === 'pt-BR' ? ptBR : enUS;
   const [groups, setGroups] = useState<GroupListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -90,6 +93,7 @@ export function GroupList({ activeGroupId, onSelect, resyncToken = 0 }: GroupLis
                     <span className="shrink-0 text-[10px] text-muted-foreground">
                       {formatDistanceToNow(new Date(group.last_message_at), {
                         addSuffix: false,
+                        locale: dateFnsLocale,
                       })}
                     </span>
                   )}

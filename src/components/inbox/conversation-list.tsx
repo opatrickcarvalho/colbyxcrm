@@ -12,8 +12,9 @@ import type { Conversation, ConversationStatus, Tag } from '@/types';
 import { Search, ChevronDown, X, Pin, Bot } from 'lucide-react';
 import { whatsappLabelColor } from '@/lib/whatsapp/label-colors';
 import { formatDistanceToNow } from 'date-fns';
+import { ptBR, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import { ContactAvatar } from '@/components/inbox/contact-avatar';
 import {
@@ -229,19 +230,24 @@ export function ConversationList({
       });
     }
 
-    // Pinned conversations float to the top (most-recently-pinned
-    // first), same as WhatsApp's own pin behavior; everything else
-    // keeps the last_message_at order the query already provided.
-    if (pinnedAt.size > 0) {
-      result = [...result].sort((a, b) => {
-        const pa = pinnedAt.get(a.id);
-        const pb = pinnedAt.get(b.id);
-        if (pa && pb) return pb.localeCompare(pa);
-        if (pa) return -1;
-        if (pb) return 1;
-        return 0;
-      });
-    }
+    // Always re-sort by last_message_at (most recent first), then float
+    // pinned conversations to the top (most-recently-pinned first, same
+    // as WhatsApp's own pin behavior). The initial fetch already comes
+    // back in this order, but realtime message/conversation events patch
+    // `last_message_at` in place via setConversations((prev) => prev.map(...))
+    // without reordering the array — so without re-sorting here, a
+    // conversation that just received a new message stays wherever it
+    // was in the list instead of jumping to the top.
+    result = [...result].sort((a, b) => {
+      const pa = pinnedAt.get(a.id);
+      const pb = pinnedAt.get(b.id);
+      if (pa && pb) return pb.localeCompare(pa);
+      if (pa) return -1;
+      if (pb) return 1;
+      const ta = a.last_message_at ?? '';
+      const tb = b.last_message_at ?? '';
+      return tb.localeCompare(ta);
+    });
 
     return result;
   }, [
@@ -544,6 +550,8 @@ function ConversationItem({
   onTogglePin,
   t,
 }: ConversationItemProps) {
+  const locale = useLocale();
+  const dateFnsLocale = locale === 'pt-BR' ? ptBR : enUS;
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t('unknown');
   // The bot paused itself here (cap reached or it handed off) and no
@@ -579,6 +587,7 @@ function ConversationItem({
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
+        locale: dateFnsLocale,
       })
     : '';
 
