@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
+import { whatsappLabelColor } from "@/lib/whatsapp/label-colors";
 import { useTranslations } from "next-intl";
 
 interface PipelineBoardProps {
@@ -28,6 +29,7 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  onOpenConversation?: (deal: Deal) => void;
 }
 
 export function PipelineBoard({
@@ -36,6 +38,7 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  onOpenConversation,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -119,6 +122,7 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              onOpenConversation={onOpenConversation}
             />
           );
         })}
@@ -193,6 +197,7 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  onOpenConversation,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -200,6 +205,7 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  onOpenConversation?: (deal: Deal) => void;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -225,6 +231,17 @@ function StageColumn({
           {deals.length}
         </span>
       </div>
+      {stage.whatsapp_label && (
+        <span
+          className="mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+          style={{
+            backgroundColor: `${whatsappLabelColor(stage.whatsapp_label.color_code)}22`,
+            color: whatsappLabelColor(stage.whatsapp_label.color_code),
+          }}
+        >
+          {stage.whatsapp_label.name}
+        </span>
+      )}
       <p className="text-xs text-muted-foreground">
         {formatCurrency(totalValue, currency)}
       </p>
@@ -248,6 +265,7 @@ function StageColumn({
               deal={deal}
               stage={stage}
               onEdit={onEditDeal}
+              onOpenConversation={onOpenConversation}
             />
           ))
         )}
@@ -270,10 +288,12 @@ function DraggableDealCard({
   deal,
   stage,
   onEdit,
+  onOpenConversation,
 }: {
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
+  onOpenConversation?: (deal: Deal) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -286,7 +306,12 @@ function DraggableDealCard({
       {...attributes}
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
     >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <DealCard
+        deal={deal}
+        stage={stage}
+        onEdit={onEdit}
+        onOpenConversation={onOpenConversation}
+      />
     </div>
   );
 }

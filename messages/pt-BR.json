@@ -604,7 +604,37 @@
     "card": {
       "noContact": "Sem contato",
       "won": "Ganho",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "openConversation": "Abrir conversa",
+      "addNote": "Adicionar anotação"
+    },
+    "notePopover": {
+      "title": "Anotação rápida",
+      "placeholder": "Escreva uma anotação...",
+      "save": "Salvar",
+      "saving": "Salvando...",
+      "noNotesYet": "Nenhuma anotação ainda",
+      "noContact": "Este negócio não tem contato vinculado",
+      "toastAdded": "Anotação adicionada",
+      "toastFailed": "Falha ao adicionar anotação"
+    },
+    "conversationModal": {
+      "title": "Conversa",
+      "noConversationTitle": "Ainda não há conversa no WhatsApp",
+      "noConversationDesc": "Inicie uma enviando uma mensagem de modelo aprovada.",
+      "startConversation": "Iniciar conversa",
+      "textPlaceholder": "Escreva a primeira mensagem...",
+      "send": "Enviar",
+      "sending": "Enviando...",
+      "toastFailedLoad": "Falha ao carregar a conversa",
+      "toastFailedSend": "Falha ao enviar a mensagem"
+    },
+    "contactPicker": {
+      "title": "Começar a partir de um contato",
+      "searchPlaceholder": "Buscar por nome ou telefone...",
+      "loading": "Carregando contatos...",
+      "noResults": "Nenhum contato encontrado",
+      "createBlank": "Pular, criar negócio em branco"
     },
     "form": {
       "editDeal": "Editar negócio",

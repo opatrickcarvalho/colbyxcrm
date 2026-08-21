@@ -413,6 +413,8 @@ export interface PipelineStage {
   created_at: string;
   /** WhatsApp Business label this stage keeps in sync with (migration 055). */
   whatsapp_label_id: string | null;
+  /** Hydrated by queries that embed `whatsapp_label:whatsapp_labels(*)`. Absent otherwise. */
+  whatsapp_label?: WhatsAppLabel | null;
 }
 
 export type DealStatus = 'open' | 'won' | 'lost';

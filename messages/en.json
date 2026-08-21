@@ -604,7 +604,37 @@
     "card": {
       "noContact": "No contact",
       "won": "Won",
-      "lost": "Lost"
+      "lost": "Lost",
+      "openConversation": "Open conversation",
+      "addNote": "Add note"
+    },
+    "notePopover": {
+      "title": "Quick note",
+      "placeholder": "Write a note...",
+      "save": "Save",
+      "saving": "Saving...",
+      "noNotesYet": "No notes yet",
+      "noContact": "This deal has no linked contact",
+      "toastAdded": "Note added",
+      "toastFailed": "Failed to add note"
+    },
+    "conversationModal": {
+      "title": "Conversation",
+      "noConversationTitle": "No WhatsApp conversation yet",
+      "noConversationDesc": "Start one by sending an approved template message.",
+      "startConversation": "Start conversation",
+      "textPlaceholder": "Write the first message...",
+      "send": "Send",
+      "sending": "Sending...",
+      "toastFailedLoad": "Failed to load conversation",
+      "toastFailedSend": "Failed to send message"
+    },
+    "contactPicker": {
+      "title": "Start from a contact",
+      "searchPlaceholder": "Search by name or phone...",
+      "loading": "Loading contacts...",
+      "noResults": "No contacts found",
+      "createBlank": "Skip, create a blank deal"
     },
     "form": {
       "editDeal": "Edit Deal",

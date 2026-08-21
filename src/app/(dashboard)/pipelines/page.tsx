@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal } from "@/types";
+import type { Pipeline, PipelineStage, Deal, Contact } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { DealConversationModal } from "@/components/pipelines/deal-conversation-modal";
+import { ContactPicker } from "@/components/pipelines/contact-picker";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +72,18 @@ export default function PipelinesPage() {
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [defaultStageId, setDefaultStageId] = useState<string>("");
 
+  // Quick-action: open a deal's WhatsApp conversation without leaving the board.
+  const [conversationModalOpen, setConversationModalOpen] = useState(false);
+  const [conversationDeal, setConversationDeal] = useState<Deal | null>(null);
+
+  // Contact-first creation: the per-column "+" opens this picker before the
+  // Deal Sheet; the top-bar "Add Deal" (no column context) skips straight to
+  // the Sheet as before.
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [pendingStageId, setPendingStageId] = useState<string>("");
+  const [prefillContactId, setPrefillContactId] = useState<string | undefined>();
+  const [prefillTitle, setPrefillTitle] = useState<string | undefined>();
+
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttempted = useRef(false);
 
@@ -89,7 +103,7 @@ export default function PipelinesPage() {
     async (pipelineId: string) => {
       const { data } = await supabase
         .from("pipeline_stages")
-        .select("*")
+        .select("*, whatsapp_label:whatsapp_labels(*)")
         .eq("pipeline_id", pipelineId)
         .order("position");
       return data ?? [];
@@ -246,16 +260,50 @@ export default function PipelinesPage() {
   const handleAddDeal = useCallback(
     (stageId?: string) => {
       setEditingDeal(null);
-      setDefaultStageId(stageId ?? stages[0]?.id ?? "");
+      setPrefillContactId(undefined);
+      setPrefillTitle(undefined);
+      if (stageId) {
+        // Column "+" — start from a contact instead of a blank form.
+        setPendingStageId(stageId);
+        setContactPickerOpen(true);
+        return;
+      }
+      // Top-bar "Add Deal" has no column context — keep the manual flow.
+      setDefaultStageId(stages[0]?.id ?? "");
       setDealFormOpen(true);
     },
     [stages],
   );
 
+  const handleContactPicked = useCallback((contact: Contact) => {
+    setEditingDeal(null);
+    setDefaultStageId(pendingStageId);
+    setPrefillContactId(contact.id);
+    setPrefillTitle(contact.name || contact.phone);
+    setContactPickerOpen(false);
+    setDealFormOpen(true);
+  }, [pendingStageId]);
+
+  const handleSkipContactPicker = useCallback(() => {
+    setEditingDeal(null);
+    setDefaultStageId(pendingStageId);
+    setPrefillContactId(undefined);
+    setPrefillTitle(undefined);
+    setContactPickerOpen(false);
+    setDealFormOpen(true);
+  }, [pendingStageId]);
+
   const handleEditDeal = useCallback((deal: Deal) => {
     setEditingDeal(deal);
     setDefaultStageId(deal.stage_id);
+    setPrefillContactId(undefined);
+    setPrefillTitle(undefined);
     setDealFormOpen(true);
+  }, []);
+
+  const handleOpenConversation = useCallback((deal: Deal) => {
+    setConversationDeal(deal);
+    setConversationModalOpen(true);
   }, []);
 
   async function handleCreatePipeline() {
@@ -430,6 +478,7 @@ export default function PipelinesPage() {
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            onOpenConversation={handleOpenConversation}
           />
         </>
       )}
@@ -498,7 +547,23 @@ export default function PipelinesPage() {
         pipelineId={selectedPipelineId}
         stages={stages}
         defaultStageId={defaultStageId}
+        prefillContactId={prefillContactId}
+        prefillTitle={prefillTitle}
         onSaved={refreshDeals}
+      />
+
+      <DealConversationModal
+        open={conversationModalOpen}
+        onOpenChange={setConversationModalOpen}
+        contact={conversationDeal?.contact ?? null}
+        conversationId={conversationDeal?.conversation_id ?? null}
+      />
+
+      <ContactPicker
+        open={contactPickerOpen}
+        onOpenChange={setContactPickerOpen}
+        onSelect={handleContactPicked}
+        onSkip={handleSkipContactPicker}
       />
     </div>
   );

@@ -41,6 +41,10 @@ interface DealFormProps {
   pipelineId: string;
   stages: PipelineStage[];
   defaultStageId?: string;
+  /** Pre-fills the create path when coming from the contact-first flow
+   *  (ContactPicker). Ignored in edit mode. */
+  prefillContactId?: string;
+  prefillTitle?: string;
   onSaved: () => void;
 }
 
@@ -51,6 +55,8 @@ export function DealForm({
   pipelineId,
   stages,
   defaultStageId,
+  prefillContactId,
+  prefillTitle,
   onSaved,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
@@ -95,16 +101,24 @@ export function DealForm({
       setExpectedCloseDate(deal.expected_close_date ?? "");
       setNotes(deal.notes ?? "");
     } else {
-      setTitle("");
+      setTitle(prefillTitle ?? "");
       setValue("");
       setCurrency(defaultCurrency);
-      setContactId("");
+      setContactId(prefillContactId ?? "");
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
+  }, [
+    open,
+    deal,
+    defaultStageId,
+    stages,
+    defaultCurrency,
+    prefillContactId,
+    prefillTitle,
+  ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
@@ -170,6 +184,14 @@ export function DealForm({
       expected_close_date: expectedCloseDate || null,
     };
 
+    // Only set on create: an edited deal keeps whatever conversation it was
+    // originally linked to, even if the contact's newest conversation has
+    // since changed.
+    const createPayload = {
+      ...payload,
+      conversation_id: linkedConversation?.id ?? null,
+    };
+
     if (deal) {
       const { error } = await supabase
         .from("deals")
@@ -195,9 +217,12 @@ export function DealForm({
         setSaving(false);
         return;
       }
-      const { error } = await supabase
-        .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+      const { error } = await supabase.from("deals").insert({
+        ...createPayload,
+        user_id: user.id,
+        account_id: accountId,
+        status: "open",
+      });
       if (error) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);

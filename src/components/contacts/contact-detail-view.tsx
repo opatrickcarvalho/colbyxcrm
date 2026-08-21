@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
+import { useContactNotes } from '@/hooks/use-contact-notes';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
+import type { Contact, Tag, ContactTag, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
 import {
   TemplatePicker,
   type TemplateSendValues,
@@ -57,7 +58,7 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
   const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
+  const { defaultCurrency } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,10 +83,10 @@ export function ContactDetailView({
   const [savingTags, setSavingTags] = useState(false);
 
   // Notes tab
-  const [notes, setNotes] = useState<ContactNote[]>([]);
+  const { notes, loading: loadingNotes, addNote: addContactNote, deleteNote: deleteContactNote } =
+    useContactNotes(open ? contactId : null);
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
-  const [loadingNotes, setLoadingNotes] = useState(false);
 
   // Custom fields tab
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
@@ -131,20 +132,6 @@ export function ContactDetailView({
     }
   }, [contactId, supabase]);
 
-  const fetchNotes = useCallback(async () => {
-    if (!contactId) return;
-    setLoadingNotes(true);
-
-    const { data } = await supabase
-      .from('contact_notes')
-      .select('*')
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: false });
-
-    if (data) setNotes(data);
-    setLoadingNotes(false);
-  }, [contactId, supabase]);
-
   const fetchCustomFields = useCallback(async () => {
     if (!contactId) return;
     setLoadingCustom(true);
@@ -184,11 +171,10 @@ export function ContactDetailView({
     if (open && contactId) {
       fetchContact();
       fetchTags();
-      fetchNotes();
       fetchCustomFields();
       fetchDeals();
     }
-  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
+  }, [open, contactId, fetchContact, fetchTags, fetchCustomFields, fetchDeals]);
 
   async function copyPhone() {
     if (!contact) return;
@@ -247,46 +233,25 @@ export function ContactDetailView({
   }
 
   async function addNote() {
-    if (!contactId || !newNote.trim()) return;
+    if (!newNote.trim()) return;
     setSavingNote(true);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user || !accountId) {
+    const { error } = await addContactNote(newNote);
+    if (error === 'not_authenticated') {
       toast.error(t('toastNotAuthenticated'));
-      setSavingNote(false);
-      return;
-    }
-
-    const { error } = await supabase.from('contact_notes').insert({
-      contact_id: contactId,
-      account_id: accountId,
-      user_id: user.id,
-      note_text: newNote.trim(),
-    });
-
-    if (error) {
+    } else if (error) {
       toast.error(t('toastNoteAddFailed'));
     } else {
       setNewNote('');
-      fetchNotes();
       toast.success(t('toastNoteAdded'));
     }
     setSavingNote(false);
   }
 
   async function deleteNote(noteId: string) {
-    const { error } = await supabase
-      .from('contact_notes')
-      .delete()
-      .eq('id', noteId);
-
+    const { error } = await deleteContactNote(noteId);
     if (error) {
       toast.error(t('toastNoteDeleteFailed'));
     } else {
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
       toast.success(t('toastNoteDeleted'));
     }
   }

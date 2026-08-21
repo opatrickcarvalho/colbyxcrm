@@ -1,14 +1,17 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, X } from "lucide-react";
+import { Calendar, Check, MessageSquare, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
+import { ContactAvatar } from "@/components/inbox/contact-avatar";
+import { DealNotePopover } from "./deal-note-popover";
 
 interface DealCardProps {
   deal: Deal;
   stage: PipelineStage | null;
   onEdit: (deal: Deal) => void;
+  onOpenConversation?: (deal: Deal) => void;
   isOverlay?: boolean;
 }
 
@@ -20,26 +23,39 @@ function formatDate(dateStr: string) {
   });
 }
 
-function initials(name?: string, fallback?: string) {
-  const source = (name || fallback || "?").trim();
-  if (!source) return "?";
-  return source.charAt(0).toUpperCase();
-}
-
-export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
+export function DealCard({
+  deal,
+  stage,
+  onEdit,
+  onOpenConversation,
+  isOverlay,
+}: DealCardProps) {
   const t = useTranslations("Pipelines.card");
   const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
   const assigneeLabel = deal.assignee?.full_name || null;
 
   return (
-    <button
-      type="button"
+    // A plain <div role="button"> rather than a <button> — the quick-action
+    // icons below are real <button>s, and a <button> can't legally contain
+    // another one. `onKeyDown` restores the same Enter/Space activation a
+    // native button would give for free.
+    <div
+      role="button"
+      tabIndex={isOverlay ? -1 : 0}
       onClick={(e) => {
         // `onClick` still fires after a non-drag tap because the PointerSensor
         // requires 5px movement before it counts as a drag.
         if (isOverlay) return;
         e.stopPropagation();
         onEdit(deal);
+      }}
+      onKeyDown={(e) => {
+        if (isOverlay) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onEdit(deal);
+        }
       }}
       className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all ${
         isOverlay
@@ -74,9 +90,12 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
 
       {/* Contact row */}
       <div className="mt-2 flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
-          {initials(deal.contact?.name, deal.contact?.phone)}
-        </span>
+        <ContactAvatar
+          avatarUrl={deal.contact?.avatar_url}
+          name={contactLabel}
+          wrapperClassName="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground overflow-hidden"
+          imgClassName="h-5 w-5 rounded-full object-cover"
+        />
         <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
       </div>
 
@@ -92,16 +111,38 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         )}
       </div>
 
-      {assigneeLabel && (
-        <div className="mt-2 flex items-center justify-end">
-          <span
-            title={assigneeLabel}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
-          >
-            {initials(assigneeLabel)}
-          </span>
+      {!isOverlay && (
+        <div className="mt-2 flex items-center justify-between border-t border-border/40 pt-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={t("openConversation")}
+              title={t("openConversation")}
+              disabled={!onOpenConversation}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenConversation?.(deal);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+            <DealNotePopover contactId={deal.contact_id ?? null} />
+          </div>
+
+          {assigneeLabel && (
+            <div title={assigneeLabel}>
+              <ContactAvatar
+                avatarUrl={deal.assignee?.avatar_url}
+                name={assigneeLabel}
+                wrapperClassName="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary overflow-hidden"
+                imgClassName="h-5 w-5 rounded-full object-cover"
+              />
+            </div>
+          )}
         </div>
       )}
-    </button>
+    </div>
   );
 }

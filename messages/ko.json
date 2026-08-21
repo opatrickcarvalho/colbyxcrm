@@ -604,7 +604,37 @@
     "card": {
       "noContact": "연락처 없음",
       "won": "성사",
-      "lost": "실패"
+      "lost": "실패",
+      "openConversation": "대화 열기",
+      "addNote": "메모 추가"
+    },
+    "notePopover": {
+      "title": "빠른 메모",
+      "placeholder": "메모를 입력하세요...",
+      "save": "저장",
+      "saving": "저장 중...",
+      "noNotesYet": "아직 메모가 없습니다",
+      "noContact": "이 딜에는 연결된 연락처가 없습니다",
+      "toastAdded": "메모가 추가되었습니다",
+      "toastFailed": "메모 추가에 실패했습니다"
+    },
+    "conversationModal": {
+      "title": "대화",
+      "noConversationTitle": "아직 WhatsApp 대화가 없습니다",
+      "noConversationDesc": "승인된 템플릿 메시지를 보내 대화를 시작하세요.",
+      "startConversation": "대화 시작",
+      "textPlaceholder": "첫 메시지를 입력하세요...",
+      "send": "보내기",
+      "sending": "보내는 중...",
+      "toastFailedLoad": "대화를 불러오지 못했습니다",
+      "toastFailedSend": "메시지 전송에 실패했습니다"
+    },
+    "contactPicker": {
+      "title": "연락처로 시작",
+      "searchPlaceholder": "이름 또는 전화번호로 검색...",
+      "loading": "연락처를 불러오는 중...",
+      "noResults": "연락처를 찾을 수 없습니다",
+      "createBlank": "건너뛰고 빈 딜 만들기"
     },
     "form": {
       "editDeal": "딜 수정",

@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { useContactNotes } from "@/hooks/use-contact-notes";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, Tag } from "@/types";
 import {
   Phone,
   Mail,
@@ -30,29 +30,24 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
-  const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  const { notes, addNote } = useContactNotes(contact?.id ?? null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals and tags in parallel (notes are handled by useContactNotes)
+    const [dealsRes, tagsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
@@ -62,7 +57,6 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
@@ -93,32 +87,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
-    if (!accountId) return;
     setAddingNote(true);
-
-    const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
-
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .insert({
-        contact_id: contact.id,
-        account_id: accountId,
-        user_id: user?.id,
-        note_text: newNote.trim(),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      setNotes((prev) => [data, ...prev]);
-      setNewNote("");
-    }
+    const { error } = await addNote(newNote);
+    if (!error) setNewNote("");
     setAddingNote(false);
-  }, [contact, newNote, accountId]);
+  }, [contact, newNote, addNote]);
 
   if (!contact) {
     return (
