@@ -178,9 +178,9 @@ export function DealConversationModal({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {loading ? (
-              <div className="flex h-full items-center justify-center">
+              <div className="flex h-full w-full items-center justify-center">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : conversation && contact ? (
@@ -212,7 +212,7 @@ export function DealConversationModal({
                 presenceEnabled={capabilities?.presence ?? false}
               />
             ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <MessageSquare className="h-8 w-8 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium text-foreground">
