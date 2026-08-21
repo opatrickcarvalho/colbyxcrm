@@ -37,6 +37,8 @@ import {
   Tags,
   Search,
   X,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { format, isToday, isYesterday, differenceInHours } from 'date-fns';
 import { useTranslations } from 'next-intl';
@@ -44,7 +46,6 @@ import { ContactAvatar } from '@/components/inbox/contact-avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -1711,6 +1712,14 @@ function LabelsDropdown({
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(0);
 
+  // Inline edit/delete — at most one label row is in either mode at a time.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState(0);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1774,6 +1783,62 @@ function LabelsDropdown({
     setCreating(false);
   }, [newName, newColor, t]);
 
+  const startEdit = useCallback((label: WhatsAppLabel) => {
+    setDeletingId(null);
+    setEditingId(label.id);
+    setEditName(label.name);
+    setEditColor(label.color_code);
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!editingId) return;
+    const name = editName.trim();
+    if (!name) return;
+    setSavingEdit(true);
+    const res = await fetch(`/api/whatsapp/labels/${editingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color: editColor }),
+    }).catch(() => null);
+    setSavingEdit(false);
+    if (!res || !res.ok) {
+      const data = (await res?.json().catch(() => null)) as { error?: string } | null;
+      toast.error(data?.error ?? t('labelUpdateFailed'));
+      return;
+    }
+    setAllLabels((prev) =>
+      (prev ?? []).map((l) =>
+        l.id === editingId ? { ...l, name, color_code: editColor } : l
+      )
+    );
+    toast.success(t('labelUpdated'));
+    setEditingId(null);
+  }, [editingId, editName, editColor, t]);
+
+  const confirmDeleteLabel = useCallback(
+    async (label: WhatsAppLabel) => {
+      setDeleting(true);
+      const res = await fetch(`/api/whatsapp/labels/${label.id}`, {
+        method: 'DELETE',
+      }).catch(() => null);
+      setDeleting(false);
+      if (!res || !res.ok) {
+        const data = (await res?.json().catch(() => null)) as { error?: string } | null;
+        toast.error(data?.error ?? t('labelDeleteFailed'));
+        return;
+      }
+      setAllLabels((prev) => (prev ?? []).filter((l) => l.id !== label.id));
+      setAppliedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(label.id);
+        return next;
+      });
+      toast.success(t('labelDeleted'));
+      setDeletingId(null);
+    },
+    [t]
+  );
+
   if (unavailable) return null;
 
   return (
@@ -1796,22 +1861,134 @@ function LabelsDropdown({
             {t('noLabels')}
           </DropdownMenuItem>
         ) : (
-          allLabels.map((label) => (
-            <DropdownMenuCheckboxItem
-              key={label.id}
-              checked={appliedIds.has(label.id)}
-              onCheckedChange={() => toggleLabel(label)}
-              className="text-sm"
-            >
-              <span
-                className="mr-1.5 inline-block h-2 w-2 rounded-full"
-                style={{
-                  backgroundColor: whatsappLabelColor(label.color_code),
-                }}
-              />
-              {label.name}
-            </DropdownMenuCheckboxItem>
-          ))
+          allLabels.map((label) => {
+            if (deletingId === label.id) {
+              return (
+                <div
+                  key={label.id}
+                  className="flex flex-col gap-1.5 px-1.5 py-1.5 text-xs"
+                >
+                  <p className="text-muted-foreground">
+                    {t('deleteLabelConfirm')}
+                  </p>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(null)}
+                      disabled={deleting}
+                      className="hover:bg-muted h-7 flex-1 rounded-md text-xs"
+                    >
+                      {t('cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => confirmDeleteLabel(label)}
+                      disabled={deleting}
+                      className="h-7 flex-1 rounded-md bg-red-600 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {t('deleteLabel')}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            if (editingId === label.id) {
+              return (
+                <div
+                  key={label.id}
+                  className="flex flex-col gap-2 px-1.5 py-1.5"
+                >
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="border-border bg-background h-7 rounded-md border px-2 text-xs"
+                    onKeyDown={(e) => {
+                      // Same base-ui type-ahead guard as the "new label" input above.
+                      e.stopPropagation();
+                      if (e.key === 'Enter') saveEdit();
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {WHATSAPP_LABEL_COLORS.map((hex, i) => (
+                      <button
+                        key={hex}
+                        type="button"
+                        onClick={() => setEditColor(i)}
+                        className={cn(
+                          'h-4 w-4 rounded-full',
+                          editColor === i && 'ring-foreground ring-2 ring-offset-1'
+                        )}
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      disabled={savingEdit}
+                      className="hover:bg-muted h-7 flex-1 rounded-md text-xs"
+                    >
+                      {t('cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={savingEdit || !editName.trim()}
+                      className="bg-primary text-primary-foreground h-7 flex-1 rounded-md text-xs font-medium disabled:opacity-50"
+                    >
+                      {t('saveLabel')}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={label.id}
+                className="hover:bg-accent group flex items-center gap-1 rounded-md pr-1.5 pl-1.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleLabel(label)}
+                  className="flex flex-1 items-center gap-1.5 py-1 text-left text-sm"
+                >
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: whatsappLabelColor(label.color_code),
+                    }}
+                  />
+                  <span className="flex-1 truncate">{label.name}</span>
+                  {appliedIds.has(label.id) && (
+                    <Check className="text-primary h-3.5 w-3.5 shrink-0" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('editLabel')}
+                  title={t('editLabel')}
+                  onClick={() => startEdit(label)}
+                  className="text-muted-foreground hover:text-foreground shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('deleteLabel')}
+                  title={t('deleteLabel')}
+                  onClick={() => setDeletingId(label.id)}
+                  className="text-muted-foreground shrink-0 opacity-0 hover:text-red-400 group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })
         )}
         <DropdownMenuSeparator className="bg-border" />
         {creating ? (

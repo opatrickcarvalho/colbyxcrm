@@ -209,7 +209,16 @@
       "newLabelPlaceholder": "Nome da etiqueta",
       "createLabel": "Criar",
       "labelApplyFailed": "Não foi possível atualizar a etiqueta",
-      "labelCreateFailed": "Não foi possível criar a etiqueta"
+      "labelCreateFailed": "Não foi possível criar a etiqueta",
+      "editLabel": "Editar etiqueta",
+      "deleteLabel": "Excluir etiqueta",
+      "deleteLabelConfirm": "Excluir esta etiqueta? Ela será removida do WhatsApp e de todas as conversas em que está aplicada.",
+      "saveLabel": "Salvar",
+      "cancel": "Cancelar",
+      "labelUpdateFailed": "Não foi possível salvar a etiqueta",
+      "labelDeleteFailed": "Não foi possível excluir a etiqueta",
+      "labelUpdated": "Etiqueta atualizada",
+      "labelDeleted": "Etiqueta excluída"
     },
     "sessionTimer": {
       "expired": "Expirado",

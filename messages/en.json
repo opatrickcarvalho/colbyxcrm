@@ -209,7 +209,16 @@
       "newLabelPlaceholder": "Label name",
       "createLabel": "Create",
       "labelApplyFailed": "Couldn't update the label",
-      "labelCreateFailed": "Couldn't create the label"
+      "labelCreateFailed": "Couldn't create the label",
+      "editLabel": "Edit label",
+      "deleteLabel": "Delete label",
+      "deleteLabelConfirm": "Delete this label? It will be removed from WhatsApp and every conversation it's applied to.",
+      "saveLabel": "Save",
+      "cancel": "Cancel",
+      "labelUpdateFailed": "Couldn't save the label",
+      "labelDeleteFailed": "Couldn't delete the label",
+      "labelUpdated": "Label updated",
+      "labelDeleted": "Label deleted"
     },
     "sessionTimer": {
       "expired": "Expired",

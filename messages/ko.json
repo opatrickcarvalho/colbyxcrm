@@ -209,7 +209,16 @@
       "newLabelPlaceholder": "라벨 이름",
       "createLabel": "만들기",
       "labelApplyFailed": "라벨을 업데이트할 수 없습니다",
-      "labelCreateFailed": "라벨을 만들 수 없습니다"
+      "labelCreateFailed": "라벨을 만들 수 없습니다",
+      "editLabel": "라벨 수정",
+      "deleteLabel": "라벨 삭제",
+      "deleteLabelConfirm": "이 라벨을 삭제하시겠습니까? WhatsApp과 적용된 모든 대화에서 제거됩니다.",
+      "saveLabel": "저장",
+      "cancel": "취소",
+      "labelUpdateFailed": "라벨을 저장할 수 없습니다",
+      "labelDeleteFailed": "라벨을 삭제할 수 없습니다",
+      "labelUpdated": "라벨이 업데이트되었습니다",
+      "labelDeleted": "라벨이 삭제되었습니다"
     },
     "sessionTimer": {
       "expired": "만료됨",
