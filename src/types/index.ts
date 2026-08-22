@@ -246,6 +246,10 @@ export type ContentType =
   | 'document'
   | 'audio'
   | 'video'
+  /** A silent, looping short video — what WhatsApp itself calls a "GIF"
+   *  (uazapi's `videoplay` type); the bytes are still an mp4. */
+  | 'gif'
+  | 'sticker'
   | 'location'
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */

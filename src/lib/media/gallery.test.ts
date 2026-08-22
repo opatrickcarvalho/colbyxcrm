@@ -41,6 +41,18 @@ describe("collectMediaGallery", () => {
     expect(items.map((i) => i.kind)).toEqual(["image", "video", "image"]);
   });
 
+  it("includes gifs but not stickers", () => {
+    const items = collectMediaGallery(
+      [
+        msg("g1", "gif", { media_url: "https://x.supabase.co/loop.mp4" }),
+        msg("s1", "sticker", { media_url: "https://x.supabase.co/sticker.webp" }),
+      ],
+      authorLabel,
+    );
+    expect(items.map((i) => i.messageId)).toEqual(["g1"]);
+    expect(items[0].kind).toBe("gif");
+  });
+
   it("skips media whose bytes we have no URL for", () => {
     // Meta refusing to verify the id (webhook's verifyAndBuildUrl → null) or
     // expiring it later both land here — the bubble shows "unavailable", so

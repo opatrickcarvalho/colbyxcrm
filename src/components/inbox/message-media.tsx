@@ -117,11 +117,15 @@ export function MediaImageBubble({
   message,
   onOpen,
   t,
+  sizeClassName = MEDIA_BOX,
 }: {
   message: MediaMessageLike;
   /** Opens the thread's lightbox on this message. Omitted ⇒ not clickable. */
   onOpen?: () => void;
   t: Translator;
+  /** Overrides {@link MEDIA_BOX} — a sticker renders much smaller than a
+   *  photo, with no other difference in how the bytes are loaded. */
+  sizeClassName?: string;
 }) {
   const { src, status } = useMediaBlobUrl(message.media_url);
   // The fetch can succeed and the bytes still not be a decodable image.
@@ -149,7 +153,7 @@ export function MediaImageBubble({
     <img
       src={src}
       alt={t("imageAlt")}
-      className={cn(MEDIA_BOX, "rounded-lg object-contain")}
+      className={cn(sizeClassName, "rounded-lg object-contain")}
       onError={() => setBroken(true)}
     />
   );
@@ -214,6 +218,58 @@ export function MediaVideoBubble({
             onClick={onOpen}
           />
         )}
+        <MediaActionButton
+          icon={Download}
+          label={t("download")}
+          onClick={download}
+          busy={downloading}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function MediaGifBubble({
+  message,
+  onOpen,
+  t,
+}: {
+  message: MediaMessageLike;
+  onOpen?: () => void;
+  t: Translator;
+}) {
+  const { downloading, download } = useMediaDownload(message, t);
+
+  // Bytes are an mp4 (WhatsApp's "GIF" is a silent looping video, not an
+  // actual .gif file) — autoplay/loop/muted and no controls is what makes
+  // it read as a GIF instead of a video clip.
+  const gif = (
+    <video
+      src={message.media_url}
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      className={cn(MEDIA_BOX, "rounded-lg object-contain")}
+    />
+  );
+
+  return (
+    <div className="group/media relative w-fit">
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={t("viewImage")}
+          className="block cursor-zoom-in rounded-lg outline-none ring-offset-2 ring-offset-transparent focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {gif}
+        </button>
+      ) : (
+        gif
+      )}
+      <div className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover/media:opacity-100 group-focus-within/media:opacity-100">
         <MediaActionButton
           icon={Download}
           label={t("download")}

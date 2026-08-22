@@ -272,6 +272,8 @@
       "photo": "사진",
       "video": "동영상",
       "audio": "오디오",
+      "gif": "GIF",
+      "sticker": "스티커",
       "unavailable": "{label}을(를) 사용할 수 없습니다",
       "document": "문서",
       "locationShared": "위치 공유됨",
@@ -322,6 +324,8 @@
     "replyQuote": {
       "photo": "[사진]",
       "video": "[동영상]",
+      "gif": "[GIF]",
+      "sticker": "[스티커]",
       "document": "[문서]",
       "audio": "[오디오]",
       "voiceMessage": "[음성 메시지]",

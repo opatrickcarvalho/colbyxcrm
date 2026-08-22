@@ -4,8 +4,9 @@ import type { MediaMessageLike } from "./message-like";
  * The set of media in a thread that the lightbox can page through, built
  * from the messages the thread already holds (no extra fetch).
  *
- * Only images and videos qualify: an audio bubble has nothing to look at,
- * and a document is handed to the OS rather than rendered. Rows with no
+ * Only images, videos and GIFs qualify: an audio bubble has nothing to
+ * look at, a sticker is too small to page through full-size, and a
+ * document is handed to the OS rather than rendered. Rows with no
  * `media_url` are skipped — that's either media Meta refused to verify
  * (`verifyAndBuildUrl` returns null in the webhook) or media whose bytes
  * Meta has since expired, and both render as "unavailable" in the bubble.
@@ -16,7 +17,7 @@ import type { MediaMessageLike } from "./message-like";
  * one lightbox instead of two.
  */
 
-export type MediaGalleryKind = "image" | "video";
+export type MediaGalleryKind = "image" | "video" | "gif";
 
 export interface MediaGalleryItem {
   /** The source row's `id` — the lightbox's identity for "which one is open". */
@@ -38,6 +39,7 @@ function galleryKind(
 ): MediaGalleryKind | null {
   if (contentType === "image") return "image";
   if (contentType === "video") return "video";
+  if (contentType === "gif") return "gif";
   return null;
 }
 

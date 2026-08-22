@@ -18,6 +18,7 @@ import { MessageReactions } from "./message-reactions";
 import {
   MediaAudioBubble,
   MediaDocumentBubble,
+  MediaGifBubble,
   MediaImageBubble,
   MediaUnavailable,
   MediaVideoBubble,
@@ -196,6 +197,34 @@ function MessageContent({
             </p>
           )}
         </div>
+      );
+
+    case 'gif':
+      return (
+        <div>
+          {message.media_url ? (
+            <MediaGifBubble message={message} onOpen={openMedia} t={t} />
+          ) : (
+            <MediaUnavailable label={t('gif')} t={t} />
+          )}
+          {message.content_text && (
+            <p className="mt-1 text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+              {message.content_text}
+            </p>
+          )}
+        </div>
+      );
+
+    // A sticker never carries a caption on WhatsApp, and renders much
+    // smaller than a photo — no caption row, no full MEDIA_BOX size.
+    case 'sticker':
+      return message.media_url ? (
+        // No `onOpen` — WhatsApp itself doesn't let you tap a sticker
+        // into a full-size viewer, and the media gallery (lib/media/
+        // gallery.ts) doesn't index stickers either.
+        <MediaImageBubble message={message} t={t} sizeClassName="h-32 w-32" />
+      ) : (
+        <MediaUnavailable label={t('sticker')} t={t} />
       );
 
     case 'audio':

@@ -7,6 +7,7 @@ import type { MediaMessageLike } from '@/lib/media/message-like';
 import {
   MediaAudioBubble,
   MediaDocumentBubble,
+  MediaGifBubble,
   MediaImageBubble,
   MediaUnavailable,
   MediaVideoBubble,
@@ -127,9 +128,13 @@ export function GroupMessageBubble({
                   ? 'photo'
                   : message.content_type === 'video'
                     ? 'video'
-                    : message.content_type === 'audio'
-                      ? 'audio'
-                      : 'document'
+                    : message.content_type === 'gif'
+                      ? 'gif'
+                      : message.content_type === 'sticker'
+                        ? 'sticker'
+                        : message.content_type === 'audio'
+                          ? 'audio'
+                          : 'document'
               )}
               t={t}
             />
@@ -141,8 +146,22 @@ export function GroupMessageBubble({
                   onOpen={onOpenMedia}
                   t={t}
                 />
+              ) : message.content_type === 'sticker' ? (
+                // No `onOpen` — same reasoning as the 1:1 bubble: WhatsApp
+                // doesn't let you tap a sticker into a full-size viewer.
+                <MediaImageBubble
+                  message={mediaMessage}
+                  t={t}
+                  sizeClassName="h-32 w-32"
+                />
               ) : message.content_type === 'video' ? (
                 <MediaVideoBubble
+                  message={mediaMessage}
+                  onOpen={onOpenMedia}
+                  t={t}
+                />
+              ) : message.content_type === 'gif' ? (
+                <MediaGifBubble
                   message={mediaMessage}
                   onOpen={onOpenMedia}
                   t={t}
@@ -157,7 +176,8 @@ export function GroupMessageBubble({
                 <MediaDocumentBubble message={mediaMessage} t={t} />
               )}
               {(message.content_type === 'image' ||
-                message.content_type === 'video') &&
+                message.content_type === 'video' ||
+                message.content_type === 'gif') &&
                 message.content_text && (
                   <p className="mt-1 text-sm break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
                     {message.content_text}

@@ -170,6 +170,19 @@ export function MediaLightbox({
               onToggleZoom={toggleZoom}
               t={t}
             />
+          ) : item.kind === "gif" ? (
+            // Bytes are an mp4 (WhatsApp's own "GIF" is a silent looping
+            // video), but it should look like a GIF, not a video player —
+            // no controls, just autoplay/loop/muted.
+            <video
+              src={item.url}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="auto"
+              className={cn(MEDIA_MAX_HEIGHT, "max-w-full rounded-lg")}
+            />
           ) : (
             <video
               // Plain URL, never a blob — the player should stream.

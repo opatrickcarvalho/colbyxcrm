@@ -83,6 +83,10 @@ export function buildReplyPreview(message: Message, t: ReturnType<typeof useTran
       return t("photo");
     case "video":
       return t("video");
+    case "gif":
+      return t("gif");
+    case "sticker":
+      return t("sticker");
     case "audio":
       return t("audio");
     case "document":

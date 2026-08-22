@@ -58,7 +58,7 @@ export interface GroupMessage {
   sender_jid: string | null;
   sender_phone: string | null;
   sender_name: string | null;
-  content_type: 'text' | 'image' | 'document' | 'audio' | 'video';
+  content_type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'gif' | 'sticker';
   content_text: string | null;
   media_url: string | null;
   filename: string | null;
@@ -458,7 +458,9 @@ export function GroupThread({
                   m.direction === 'outbound' ? t('you') : m.sender_name || m.sender_phone || '—'
                 }
                 onOpenMedia={
-                  m.content_type === 'image' || m.content_type === 'video'
+                  m.content_type === 'image' ||
+                  m.content_type === 'video' ||
+                  m.content_type === 'gif'
                     ? () => setMediaMessageId(m.id)
                     : undefined
                 }

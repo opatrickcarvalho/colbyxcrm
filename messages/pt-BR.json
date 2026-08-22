@@ -272,6 +272,8 @@
       "photo": "Foto",
       "video": "Vídeo",
       "audio": "Áudio",
+      "gif": "GIF",
+      "sticker": "Figurinha",
       "unavailable": "{label} indisponível",
       "document": "Documento",
       "locationShared": "Localização compartilhada",
@@ -309,6 +311,8 @@
     "replyQuote": {
       "photo": "[Foto]",
       "video": "[Vídeo]",
+      "gif": "[GIF]",
+      "sticker": "[Figurinha]",
       "document": "[Documento]",
       "audio": "[Áudio]",
       "voiceMessage": "[Mensagem de voz]",

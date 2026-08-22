@@ -154,6 +154,14 @@ interface UazapiMessage {
   messageTimestamp?: number | string;
   /** Provider id of the message this one quotes, for swipe replies. */
   quoted?: string;
+  /**
+   * Present only on a `messageType: 'reaction'` event — the provider id
+   * of the message being reacted to (uazapi's OpenAPI spec: "ID da
+   * mensagem reagida"). The emoji itself rides in `text`, same field an
+   * ordinary text message uses; empty `text` means the reaction was
+   * removed.
+   */
+  reaction?: string;
   /** Baileys format fallback */
   key?: { id?: string };
   update?: { status?: string | number };
@@ -238,17 +246,26 @@ function toContentType(messageType: string | undefined): string {
   switch ((messageType || '').toLowerCase()) {
     case 'image':
     case 'imagemessage':
+      return 'image';
     case 'sticker':
     case 'stickermessage':
-      // Stickers are webp images on the wire (uazapi's own send-media
-      // enum lists `sticker` as a distinct type, but the download/
-      // upload path only cares that it's an image). Reusing 'image'
-      // means isMedia below and extFromMime's existing image/webp
-      // entry both pick it up with no further changes.
-      return 'image';
+      // Figurinha — a small transparent webp, rendered and captioned
+      // differently from a photo (message-bubble.tsx). Used to fold into
+      // 'image', which is why every sticker showed up looking like an
+      // ordinary photo.
+      return 'sticker';
     case 'video':
     case 'videomessage':
       return 'video';
+    case 'videoplay':
+    case 'gif':
+    case 'gifmessage':
+      // WhatsApp's own "GIF" (from the GIF picker, or a forwarded one) is
+      // not a .gif file — it's a silent, looping mp4, which is exactly
+      // what uazapi's `videoplay` send/message type is. Falling into
+      // 'video' meant it played like an ordinary video clip (controls,
+      // no autoplay/loop) instead of reading as a GIF.
+      return 'gif';
     case 'audio':
     case 'ptt':
     case 'audiomessage':
@@ -295,9 +312,88 @@ function extFromMime(mime: string, contentType: string): string {
   const guessed = base?.split('/')[1];
   if (guessed) return guessed;
   if (contentType === 'image') return 'jpg';
+  if (contentType === 'sticker') return 'webp';
   if (contentType === 'video') return 'mp4';
+  // A "GIF" is a plain mp4 on the wire (see toContentType) even when the
+  // mime comes back unrecognised.
+  if (contentType === 'gif') return 'mp4';
   if (contentType === 'audio') return 'ogg';
   return 'bin';
+}
+
+/**
+ * Persist an inbound 1:1 reaction. Same contract as the Meta webhook's
+ * `handleReaction` (src/app/api/whatsapp/webhook/route.ts) — a reaction
+ * is per-(target, actor) state, never a new row in `messages`.
+ *
+ * Only a CUSTOMER's reaction is written here. An agent's own reaction
+ * sent through the CRM is already recorded by POST /api/whatsapp/react;
+ * uazapi echoes that same tap back through this webhook (`fromMe:
+ * true`), and until this function existed, that echo fell through the
+ * generic message path below and landed as a second, bogus "❤️" text
+ * message — confirmed in production (the CRM's own react button
+ * correctly wrote to `message_reactions`, then ~2 minutes later the
+ * webhook echo of that exact tap inserted a duplicate message with the
+ * emoji as its body). The fix is to drop the `fromMe` echo entirely
+ * rather than guess an actor: unlike Meta's Business number, a uazapi
+ * instance is a personal WhatsApp any teammate (or the account owner)
+ * can react natively from their own phone, with no per-teammate
+ * identity on the wire to attribute it to.
+ */
+async function handleUazapiReaction(
+  db: ReturnType<typeof supabaseAdmin>,
+  message: UazapiMessage,
+  conversationId: string,
+  contactId: string
+): Promise<void> {
+  if (message.fromMe) return;
+
+  const targetProviderId = message.reaction;
+  if (!targetProviderId) return;
+
+  const { data: target } = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', conversationId)
+    .eq('message_id', targetProviderId)
+    .maybeSingle();
+  if (!target) {
+    console.warn(
+      '[uazapi/webhook] reaction target message not found; skipping',
+      targetProviderId
+    );
+    return;
+  }
+
+  // Empty text = the reaction was removed (Baileys/WhatsApp convention —
+  // same as Meta's Cloud API).
+  const emoji = message.text || '';
+  if (!emoji) {
+    const { error: delError } = await db
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', target.id)
+      .eq('actor_type', 'customer')
+      .eq('actor_id', contactId);
+    if (delError) {
+      console.error('[uazapi/webhook] reaction delete failed:', delError.message);
+    }
+    return;
+  }
+
+  const { error: upsertError } = await db.from('message_reactions').upsert(
+    {
+      message_id: target.id,
+      conversation_id: conversationId,
+      actor_type: 'customer',
+      actor_id: contactId,
+      emoji,
+    },
+    { onConflict: 'message_id,actor_type,actor_id' }
+  );
+  if (upsertError) {
+    console.error('[uazapi/webhook] reaction upsert failed:', upsertError.message);
+  }
 }
 
 export async function POST(
@@ -935,6 +1031,14 @@ export async function POST(
           .maybeSingle();
         if (!localGroup) continue;
 
+        // A reaction (tap of an emoji on a group message) is its own
+        // webhook event, not a new message — group reactions have no
+        // storage yet (`message_reactions` only references the 1:1
+        // `messages` table, see the 1:1 path below), but inserting the
+        // emoji as a bogus text message is strictly worse than dropping
+        // the event, so just skip it.
+        if ((message.messageType || '').toLowerCase() === 'reaction') continue;
+
         const groupProviderMessageId = message.messageid || message.id || null;
 
         // Our own compose route (POST /api/whatsapp/groups/[id]/messages)
@@ -952,9 +1056,14 @@ export async function POST(
         }
 
         const groupContentType = toContentType(message.messageType);
-        const isGroupMedia = ['image', 'video', 'audio', 'document'].includes(
-          groupContentType
-        );
+        const isGroupMedia = [
+          'image',
+          'video',
+          'audio',
+          'document',
+          'gif',
+          'sticker',
+        ].includes(groupContentType);
         // See the 1:1 path above: a caption lives in `message.text`, not
         // a `message.caption` field (uazapi's Message schema has no such
         // property).
@@ -1083,6 +1192,15 @@ export async function POST(
           message.fromMe ? null : (message.senderName ?? null)
         );
 
+      // A reaction is its own webhook event, not a new message — see
+      // handleUazapiReaction's doc comment for why this is short-
+      // circuited here rather than falling through to the generic
+      // message-insert path below.
+      if ((message.messageType || '').toLowerCase() === 'reaction') {
+        await handleUazapiReaction(db, message, conversationId, contactId);
+        continue;
+      }
+
       // Best-effort profile-photo backfill. uazapi never rides this
       // along on the message payload — `Chat.image` only comes back
       // from a dedicated `/chat/details` call — so only pay for it
@@ -1141,9 +1259,14 @@ export async function POST(
       const contentType = buttonReply
         ? 'interactive'
         : toContentType(message.messageType);
-      const isMedia = ['image', 'video', 'audio', 'document'].includes(
-        contentType
-      );
+      const isMedia = [
+        'image',
+        'video',
+        'audio',
+        'document',
+        'gif',
+        'sticker',
+      ].includes(contentType);
       // `content` on a media message is WhatsApp's own (often
       // JSON-shaped) media envelope — a `.enc` CDN URL plus the
       // decryption key, not text a human should ever see. Falling back
