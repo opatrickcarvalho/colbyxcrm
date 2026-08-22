@@ -44,11 +44,12 @@ const PAGE_SIZE = 50;
 const MAX_RECORDING_SECONDS = 5 * 60;
 const OPUS_ENCODER_PATH = '/opus/encoderWorker.min.js';
 
-const PICKER_ACCEPT: Record<'image' | 'video' | 'document', string> = {
+// Document has no entry — migration 066 lifted the chat-media bucket's
+// MIME whitelist so it accepts any file, matching WhatsApp Web's own
+// "document" attachment.
+const PICKER_ACCEPT: Record<'image' | 'video', string> = {
   image: 'image/png,image/jpeg,image/webp',
   video: 'video/mp4,video/3gpp',
-  document:
-    'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain',
 };
 
 export interface GroupMessage {
@@ -511,7 +512,6 @@ export function GroupThread({
           <input
             ref={documentInputRef}
             type="file"
-            accept={PICKER_ACCEPT.document}
             className="hidden"
             onChange={(e) => {
               void handleFilePicked('document', e.target.files?.[0]);
