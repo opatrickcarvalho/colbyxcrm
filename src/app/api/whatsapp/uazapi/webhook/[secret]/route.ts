@@ -155,10 +155,13 @@ interface UazapiMessage {
   /** Provider id of the message this one quotes, for swipe replies. */
   quoted?: string;
   /**
-   * Present only on a `messageType: 'reaction'` event — the provider id
-   * of the message being reacted to (uazapi's OpenAPI spec: "ID da
-   * mensagem reagida"). The emoji itself rides in `text`, same field an
-   * ordinary text message uses; empty `text` means the reaction was
+   * Present only on a reaction event — the provider id of the message
+   * being reacted to (uazapi's OpenAPI spec: "ID da mensagem reagida").
+   * This is the detection signal for "this webhook payload is a
+   * reaction, not a message" — NOT `messageType` (see the webhook
+   * handler's use of this field for why). The emoji itself rides in
+   * `text`, same field an ordinary text message uses; empty `text` means
+   * the reaction was
    * removed.
    */
   reaction?: string;
@@ -1037,7 +1040,19 @@ export async function POST(
         // `messages` table, see the 1:1 path below), but inserting the
         // emoji as a bogus text message is strictly worse than dropping
         // the event, so just skip it.
-        if ((message.messageType || '').toLowerCase() === 'reaction') continue;
+        //
+        // Keyed off `message.reaction` (the reacted-to message's provider
+        // id) rather than `messageType === 'reaction'`: in production,
+        // a real reaction event's `messageType` was NOT the literal
+        // string "reaction" (still unconfirmed what it actually is), so
+        // that check silently never matched and the bogus message kept
+        // getting inserted even after the messageType-based fix shipped.
+        // `reaction` is only ever populated on an actual reaction event
+        // (uazapi's OpenAPI spec: "ID da mensagem reagida"), same as
+        // `quoted` is only populated on a reply — so its mere presence is
+        // the signal, independent of whatever messageType comes along
+        // with it.
+        if (message.reaction) continue;
 
         const groupProviderMessageId = message.messageid || message.id || null;
 
@@ -1195,8 +1210,9 @@ export async function POST(
       // A reaction is its own webhook event, not a new message — see
       // handleUazapiReaction's doc comment for why this is short-
       // circuited here rather than falling through to the generic
-      // message-insert path below.
-      if ((message.messageType || '').toLowerCase() === 'reaction') {
+      // message-insert path below, and the group branch above for why
+      // this checks `message.reaction` rather than `messageType`.
+      if (message.reaction) {
         await handleUazapiReaction(db, message, conversationId, contactId);
         continue;
       }
