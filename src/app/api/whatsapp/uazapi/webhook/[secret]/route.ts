@@ -1534,14 +1534,19 @@ export async function POST(
 
       await db.from('conversations').update(summary).eq('id', conversationId);
 
-      // Ad-campaign attribution: first-touch only (contactCreated is
-      // exactly "this is the very first message from a brand-new
-      // contact"), never re-tags an existing contact just because a
-      // later message happens to contain a hash-tag-looking substring.
+      // Ad-campaign attribution: runs on any genuine inbound message
+      // (never on one we sent ourselves — `fromMe` can't be "received
+      // from a lead"), regardless of whether this is a brand-new
+      // contact or someone who has messaged before. Deliberately NOT
+      // gated on `contactCreated` — an operator explicitly asked for
+      // "click + message counts, no matter who" (an existing contact
+      // clicking a new ad and re-engaging is still a real ad-driven
+      // conversation). Last touch wins: a later message with a
+      // different valid code re-attributes the contact.
       // Own try/catch, separate from the outer one: attribution is
       // enrichment, and a failure here must never skip
       // runInboundSideEffects below for the same message.
-      if (!message.fromMe && contactCreated) {
+      if (!message.fromMe) {
         try {
           const rawCode = extractCampaignCode(text);
           if (rawCode) {
@@ -1564,27 +1569,43 @@ export async function POST(
                 .eq('id', contactId);
 
               // Best-effort back-fill of the click that likely produced
-              // this contact, if it arrived via /l/{code} rather than a
+              // this message, if it arrived via /l/{code} rather than a
               // native Meta ad's prefilled message. Heuristic — the most
               // recent unmatched click for the campaign, not a
               // cryptographic pairing — good enough for a rough funnel
               // count, not for per-click financial attribution.
-              const { data: recentClick } = await db
+              //
+              // Guarded on "this contact has no click matched to this
+              // campaign yet": without it, the same person repeating the
+              // code across several messages (attribution no longer
+              // being first-touch-only) would keep consuming fresh
+              // unmatched clicks that actually belong to other people.
+              const { data: alreadyMatchedClick } = await db
                 .from('ad_campaign_clicks')
                 .select('id')
                 .eq('campaign_id', campaign.id)
-                .is('matched_contact_id', null)
-                .order('clicked_at', { ascending: false })
+                .eq('matched_contact_id', contactId)
                 .limit(1)
                 .maybeSingle();
-              if (recentClick) {
-                await db
+
+              if (!alreadyMatchedClick) {
+                const { data: recentClick } = await db
                   .from('ad_campaign_clicks')
-                  .update({
-                    matched_contact_id: contactId,
-                    matched_at: new Date().toISOString(),
-                  })
-                  .eq('id', recentClick.id);
+                  .select('id')
+                  .eq('campaign_id', campaign.id)
+                  .is('matched_contact_id', null)
+                  .order('clicked_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (recentClick) {
+                  await db
+                    .from('ad_campaign_clicks')
+                    .update({
+                      matched_contact_id: contactId,
+                      matched_at: new Date().toISOString(),
+                    })
+                    .eq('id', recentClick.id);
+                }
               }
             }
           }
