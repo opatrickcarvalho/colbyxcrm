@@ -11,13 +11,32 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 
-const DEFAULT_TEMPLATE = 'Olá! Vim pelo anúncio #{code}';
+const DEFAULT_TEMPLATE = 'Olá! Vim pelo anúncio @{code}';
+
+// Client-side mirror of slugifyCampaignCode (src/lib/attribution/code.ts)
+// for the live preview only — kept local, not imported, because that
+// module also pulls in node:crypto (generateCampaignCode), which a
+// client bundle can't resolve. The server re-sanitizes on submit
+// regardless, so this only needs to look right, not be authoritative.
+function previewSlug(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9_]/g, '')
+    .slice(0, 30);
+}
 
 export default function NewAdCampaignPage() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [codeTouched, setCodeTouched] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState(DEFAULT_TEMPLATE);
   const [saving, setSaving] = useState(false);
+
+  // The code follows the name until the operator edits it directly —
+  // same pattern as a URL slug field following a title.
+  const displayedCode = codeTouched ? code : previewSlug(name);
 
   async function handleSave() {
     if (!name.trim()) {
@@ -34,7 +53,11 @@ export default function NewAdCampaignPage() {
       const res = await fetch('/api/ad-campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, message_template: messageTemplate }),
+        body: JSON.stringify({
+          name,
+          message_template: messageTemplate,
+          code: codeTouched ? code : undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Falha ao criar campanha');
@@ -69,6 +92,25 @@ export default function NewAdCampaignPage() {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="code">Código de rastreamento</Label>
+            <Input
+              id="code"
+              value={displayedCode}
+              onChange={(e) => {
+                setCodeTouched(true);
+                setCode(previewSlug(e.target.value));
+              }}
+              placeholder="Ex: SalvadosCardoso"
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Aparece como <span className="font-mono">@{displayedCode || 'codigo'}</span> na
+              mensagem — use algo reconhecível, como o @ do Instagram ou o nome da empresa, em vez
+              de um código aleatório.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="template">Mensagem pré-preenchida</Label>
             <Textarea
               id="template"
@@ -78,7 +120,10 @@ export default function NewAdCampaignPage() {
             />
             <p className="text-xs text-muted-foreground">
               O placeholder <code className="font-mono">{'{code}'}</code> é substituído pelo
-              código de rastreamento da campanha.
+              código acima. Pré-visualização:{' '}
+              <span className="font-mono">
+                {messageTemplate.replace('{code}', displayedCode || 'codigo')}
+              </span>
             </p>
           </div>
 

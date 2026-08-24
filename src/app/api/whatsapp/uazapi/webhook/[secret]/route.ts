@@ -1549,7 +1549,7 @@ export async function POST(
               .from('ad_campaigns')
               .select('id, name')
               .eq('account_id', config.account_id)
-              .eq('code', rawCode)
+              .eq('code_key', rawCode.toLowerCase())
               .maybeSingle();
 
             if (campaign) {

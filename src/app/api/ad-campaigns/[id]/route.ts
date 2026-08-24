@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { slugifyCampaignCode } from '@/lib/attribution/code';
 
 export async function PATCH(
   request: Request,
@@ -15,10 +17,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { name, message_template, active } = body as {
+    const { name, message_template, active, code } = body as {
       name?: string;
       message_template?: string;
       active?: boolean;
+      code?: string;
     };
 
     const patch: Record<string, unknown> = {};
@@ -38,6 +41,16 @@ export async function PATCH(
       patch.message_template = message_template;
     }
     if (active !== undefined) patch.active = Boolean(active);
+    if (code !== undefined) {
+      const sanitized = slugifyCampaignCode(code);
+      if (!sanitized) {
+        return NextResponse.json(
+          { error: 'code must contain at least one letter, digit, or underscore' },
+          { status: 400 }
+        );
+      }
+      patch.code = sanitized;
+    }
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
@@ -52,6 +65,12 @@ export async function PATCH(
       .single();
 
     if (error || !campaign) {
+      if (isUniqueViolation(error)) {
+        return NextResponse.json(
+          { error: 'Esse código já está em uso. Escolha outro.' },
+          { status: 409 }
+        );
+      }
       console.error('[PATCH /api/ad-campaigns/[id]] error:', error);
       return NextResponse.json({ error: 'Ad campaign not found' }, { status: 404 });
     }

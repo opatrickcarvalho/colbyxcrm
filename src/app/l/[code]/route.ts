@@ -51,10 +51,14 @@ export async function GET(
 
   const db = supabaseAdmin();
 
+  // code_key (lower(code), see 070_ad_campaigns_readable_code.sql) is
+  // what's matched on — case-insensitive, and immune to the ILIKE
+  // wildcard-injection risk a raw `code.toLowerCase()` compared with
+  // ILIKE would carry, since this is a plain equality filter.
   const { data: campaign } = await db
     .from('ad_campaigns')
-    .select('id, account_id, message_template, active')
-    .eq('code', code.toUpperCase())
+    .select('id, account_id, code, message_template, active')
+    .eq('code_key', code.toLowerCase())
     .maybeSingle();
 
   if (!campaign || !campaign.active) return fallback();
@@ -85,6 +89,9 @@ export async function GET(
     console.error('[l/code] click-log insert failed:', err);
   }
 
-  const text = renderPrefilledMessage(campaign.message_template, code.toUpperCase());
+  // The campaign's own stored code (operator's original casing), not
+  // the URL param — so "SalvadosCardoso" renders as typed regardless
+  // of how the link happens to be cased when someone clicks it.
+  const text = renderPrefilledMessage(campaign.message_template, campaign.code);
   return NextResponse.redirect(buildWaMeUrl(config.connected_number, text));
 }

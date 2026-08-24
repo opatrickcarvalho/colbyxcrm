@@ -28,11 +28,22 @@ function copy(text: string, label: string) {
   toast.success(`${label} copiado`);
 }
 
+// See src/app/(dashboard)/ad-links/new/page.tsx for why this mirrors
+// slugifyCampaignCode instead of importing it.
+function previewSlug(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9_]/g, '')
+    .slice(0, 30);
+}
+
 export default function AdCampaignDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [campaign, setCampaign] = useState<AdCampaign | null>(null);
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const [template, setTemplate] = useState('');
   const [active, setActive] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -53,6 +64,7 @@ export default function AdCampaignDetailPage() {
         if (!cancelled) {
           setCampaign(found);
           setName(found.name);
+          setCode(found.code);
           setTemplate(found.message_template);
           setActive(found.active);
         }
@@ -73,6 +85,10 @@ export default function AdCampaignDetailPage() {
       toast.error('O nome não pode ficar vazio');
       return;
     }
+    if (!previewSlug(code)) {
+      toast.error('O código precisa ter pelo menos uma letra, número ou _');
+      return;
+    }
     if (!template.includes('{code}')) {
       toast.error('A mensagem precisa conter o placeholder {code}');
       return;
@@ -82,7 +98,7 @@ export default function AdCampaignDetailPage() {
       const res = await fetch(`/api/ad-campaigns/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, message_template: template, active }),
+        body: JSON.stringify({ name, code, message_template: template, active }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Falha ao salvar');
@@ -121,8 +137,8 @@ export default function AdCampaignDetailPage() {
   if (!campaign) return null;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const trackingLink = `${origin}/l/${campaign.code}`;
-  const renderedMessage = template.replace('{code}', campaign.code);
+  const trackingLink = `${origin}/l/${code}`;
+  const renderedMessage = template.replace('{code}', code);
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
@@ -190,6 +206,21 @@ export default function AdCampaignDetailPage() {
           <div className="space-y-2">
             <Label htmlFor="name">Nome</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="code">Código de rastreamento</Label>
+            <Input
+              id="code"
+              value={code}
+              onChange={(e) => setCode(previewSlug(e.target.value))}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Mudar o código atualiza o link e o texto do anúncio abaixo — cliques/mensagens que já
+              chegaram usando o código antigo não são afetados, mas anúncios já publicados com o
+              código antigo param de casar.
+            </p>
           </div>
 
           <div className="space-y-2">

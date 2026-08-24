@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
-import { generateCampaignCode } from '@/lib/attribution/code';
+import { generateCampaignCode, slugifyCampaignCode } from '@/lib/attribution/code';
 
 // Dashboard CRUD for ad_campaigns — inbound lead-attribution links (see
 // 068_ad_campaigns.sql). Separate from /api/whatsapp/group-broadcasts,
@@ -70,16 +70,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { name, message_template } = body as {
+    const { name, message_template, code: requestedCode } = body as {
       name?: string;
       message_template?: string;
+      code?: string;
     };
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
 
-    const template = message_template?.trim() || 'Olá! Vim pelo anúncio #{code}';
+    const template = message_template?.trim() || 'Olá! Vim pelo anúncio @{code}';
     if (!template.includes('{code}')) {
       return NextResponse.json(
         { error: 'message_template must contain the {code} placeholder' },
@@ -87,12 +88,31 @@ export async function POST(request: Request) {
       );
     }
 
-    // `code` is globally unique (not per-account — see 068's doc
-    // comment), so a collision across tenants is possible, if unlikely
-    // at 6 chars from a 33-symbol alphabet. Retry a few times rather
-    // than failing the request over a one-in-a-billion collision.
+    // A code the operator typed themselves is authoritative — if it's
+    // taken, that's a real conflict to report (409), not something to
+    // silently paper over with a random suffix. An auto-derived code
+    // (from the campaign name, or fully random when even that yields
+    // nothing usable) is negotiable: on collision, retry with a random
+    // suffix appended rather than failing the whole request.
+    if (requestedCode !== undefined && !slugifyCampaignCode(requestedCode)) {
+      return NextResponse.json(
+        { error: 'code must contain at least one letter, digit, or underscore' },
+        { status: 400 }
+      );
+    }
+    const explicitCode = requestedCode ? slugifyCampaignCode(requestedCode) : '';
+    const baseCode = explicitCode || slugifyCampaignCode(name) || generateCampaignCode();
+
+    // code_key (lower(code), see 070_ad_campaigns_readable_code.sql) is
+    // globally unique — not per-account, since the /l/{code} redirect
+    // and the webhook's code-only lookup both start from just the code,
+    // before they know which account it belongs to.
     let lastError: unknown = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    const maxAttempts = explicitCode ? 1 : 5;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const code =
+        attempt === 0 ? baseCode : `${baseCode}${generateCampaignCode().slice(0, 4)}`.slice(0, 30);
+
       const { data: campaign, error } = await supabase
         .from('ad_campaigns')
         .insert({
@@ -100,7 +120,7 @@ export async function POST(request: Request) {
           user_id: userId,
           name: name.trim(),
           message_template: template,
-          code: generateCampaignCode(),
+          code,
         })
         .select()
         .single();
@@ -110,6 +130,13 @@ export async function POST(request: Request) {
       }
       lastError = error;
       if (!isUniqueViolation(error)) break;
+    }
+
+    if (explicitCode && isUniqueViolation(lastError)) {
+      return NextResponse.json(
+        { error: 'Esse código já está em uso. Escolha outro.' },
+        { status: 409 }
+      );
     }
 
     console.error('[POST /api/ad-campaigns] insert error:', lastError);
