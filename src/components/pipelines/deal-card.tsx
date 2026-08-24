@@ -1,10 +1,11 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, MessageSquare, X } from "lucide-react";
+import { Calendar, Check, Link2, MessageSquare, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { ContactAvatar } from "@/components/inbox/contact-avatar";
+import { Badge } from "@/components/ui/badge";
 import { DealNotePopover } from "./deal-note-popover";
 
 interface DealCardProps {
@@ -98,6 +99,13 @@ export function DealCard({
         />
         <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
       </div>
+
+      {deal.contact?.lead_source_campaign_name && (
+        <Badge variant="outline" className="mt-2 max-w-full">
+          <Link2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{deal.contact.lead_source_campaign_name}</span>
+        </Badge>
+      )}
 
       <div className="mt-2 flex items-center justify-between">
         <span className="text-sm font-bold text-primary">

@@ -7,6 +7,7 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
 import { instanceStatus } from '@/lib/whatsapp/providers/uazapi'
+import { jidToPhone } from '@/lib/whatsapp/phone-utils'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { getBrandingSettings } from '@/lib/branding/get-branding'
 
@@ -119,9 +120,13 @@ export async function GET() {
         try {
           const uazToken = decrypt(config.uazapi_instance_token)
           const instance = await instanceStatus(config.uazapi_host, uazToken)
+          // instance.owner is a JID (e.g. "5511999999999@s.whatsapp.net"),
+          // not a bare number — same shape as a message sender, so it goes
+          // through the same jidToPhone() every other inbound address does.
+          const connectedNumber = jidToPhone(instance.owner)
           phoneInfo = {
-            id: instance.number || 'uazapi',
-            display_phone_number: instance.number || 'UAZAPI Connected',
+            id: connectedNumber || 'uazapi',
+            display_phone_number: connectedNumber || 'UAZAPI Connected',
             verified_name: instance.profileName || instance.name || 'UAZAPI Instance',
             quality_rating: 'GREEN'
           }

@@ -146,7 +146,16 @@ export interface UazapiInstance {
   paircode?: string;
   name?: string;
   profileName?: string;
-  number?: string;
+  /**
+   * The connected account's own address, as uazapi's `Instance` schema
+   * names it ("Proprietário da instância") — NOT a bare phone number.
+   * In practice this is a JID (`5511999999999@s.whatsapp.net`), same
+   * shape as a message sender; the OpenAPI spec's `user@example.com`
+   * example is a placeholder, not the real format (its docs are known
+   * to be unreliable — see uazapi-webhook-diagnostics memory). Callers
+   * that need a phone number must run this through `jidToPhone()`.
+   */
+  owner?: string;
 }
 
 /**
@@ -168,6 +177,7 @@ function readInstance(payload: unknown): UazapiInstance {
       (nested.paircode as string) || (root.paircode as string) || undefined,
     name: nested.name as string | undefined,
     profileName: nested.profileName as string | undefined,
+    owner: (nested.owner as string) || (root.owner as string) || undefined,
   };
 }
 

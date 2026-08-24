@@ -86,6 +86,10 @@ export async function middleware(request: NextRequest) {
     '/admin',
     '/scheduled-messages',
     '/groups',
+    // Admin CRUD for ad-campaign tracking links (068_ad_campaigns.sql).
+    // The public redirect itself, /l/[code], deliberately stays OUTSIDE
+    // this list — it's the whole point of that route.
+    '/ad-links',
     // The billing page needs a session like any other dashboard
     // route. Note this is the ONLY thing middleware knows about
     // billing: it checks authentication, never entitlement.

@@ -122,6 +122,17 @@ export interface Contact {
   presence_status?: 'available' | 'unavailable';
   presence_updated_at?: string;
   last_seen_at?: string;
+  /**
+   * Ad-campaign attribution (migration 068), set once — first-touch
+   * only — by the UAZAPI webhook when a brand-new contact's first
+   * message carries a tracking code. `lead_source_campaign_name` is a
+   * snapshot taken at match time, so it survives the campaign later
+   * being renamed or deleted (lead_source_campaign_id then goes null).
+   */
+  lead_source_campaign_id?: string | null;
+  lead_source_campaign_name?: string | null;
+  lead_source_matched_code?: string | null;
+  lead_source_matched_at?: string | null;
 }
 
 export interface Tag {

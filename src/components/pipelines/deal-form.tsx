@@ -27,6 +27,7 @@ import {
   Check,
   X,
   Trash2,
+  Link2,
   MessageSquare,
   DollarSign,
   Loader2,
@@ -317,6 +318,15 @@ export function DealForm({
                   <MessageSquare className="h-3 w-3" />
                   {t("linkToConversation")}
                 </Link>
+              )}
+
+              {/* Set once, webhook-side, at first contact — never
+                  editable from here (see 068_ad_campaigns.sql). */}
+              {deal?.contact?.lead_source_campaign_name && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Link2 className="h-3 w-3 shrink-0" />
+                  {t("source")}: {deal.contact.lead_source_campaign_name}
+                </p>
               )}
             </div>
 

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 import { instanceStatus } from '@/lib/whatsapp/providers';
 import { ensureWebhookRegistered } from '@/lib/whatsapp/uazapi-webhook-sync';
 
@@ -49,11 +50,25 @@ export async function GET(request: Request) {
       decrypt(config.uazapi_instance_token)
     );
 
-    // Mirror uazapi's state locally. Only write when it actually moved —
-    // this endpoint is polled every couple of seconds during pairing and
-    // an unconditional UPDATE would churn the row (and its updated_at)
-    // for no reason.
-    if (instance.status !== config.status) {
+    // The connected number (needed by the /l/{code} ad-attribution
+    // redirect, 069_whatsapp_config_connected_number.sql) — parsed once
+    // it's actually known, kept once set.
+    const connectedNumber = instance.owner
+      ? jidToPhone(instance.owner)?.replace(/\D/g, '')
+      : undefined;
+
+    // Mirror uazapi's state locally. The status/connected_at write is
+    // gated on an actual status change — this endpoint is polled every
+    // couple of seconds during pairing and an unconditional UPDATE would
+    // churn the row (and its updated_at) for no reason. connected_number
+    // is gated separately: an already-connected account's status never
+    // changes again on later polls, so without its own check it would
+    // never get backfilled.
+    const statusChanged = instance.status !== config.status;
+    const numberNewlyKnown = Boolean(
+      connectedNumber && connectedNumber !== config.connected_number
+    );
+    if (statusChanged || numberNewlyKnown) {
       await supabase
         .from('whatsapp_config')
         .update({
@@ -62,6 +77,7 @@ export async function GET(request: Request) {
             instance.status === 'connected'
               ? new Date().toISOString()
               : config.connected_at,
+          ...(numberNewlyKnown ? { connected_number: connectedNumber } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', config.id);

@@ -21,9 +21,10 @@ import {
   TemplatePicker,
   type TemplateSendValues,
 } from "@/components/inbox/template-picker";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { Link2, MessageSquare, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { Badge } from "@/components/ui/badge";
 import type { Contact, Conversation, Message, MessageTemplate } from "@/types";
 
 interface DealConversationModalProps {
@@ -173,8 +174,14 @@ export function DealConversationModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex h-[80vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
           <DialogHeader className="border-b border-border px-4 py-3">
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
               {contact?.name || contact?.phone || t("title")}
+              {contact?.lead_source_campaign_name && (
+                <Badge variant="outline">
+                  <Link2 className="h-3 w-3 shrink-0" />
+                  {contact.lead_source_campaign_name}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
 

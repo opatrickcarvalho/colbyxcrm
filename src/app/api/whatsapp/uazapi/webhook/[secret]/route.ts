@@ -14,6 +14,7 @@ import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
 import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { extractCampaignCode } from '@/lib/attribution/code';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -1532,6 +1533,65 @@ export async function POST(
       }
 
       await db.from('conversations').update(summary).eq('id', conversationId);
+
+      // Ad-campaign attribution: first-touch only (contactCreated is
+      // exactly "this is the very first message from a brand-new
+      // contact"), never re-tags an existing contact just because a
+      // later message happens to contain a hash-tag-looking substring.
+      // Own try/catch, separate from the outer one: attribution is
+      // enrichment, and a failure here must never skip
+      // runInboundSideEffects below for the same message.
+      if (!message.fromMe && contactCreated) {
+        try {
+          const rawCode = extractCampaignCode(text);
+          if (rawCode) {
+            const { data: campaign } = await db
+              .from('ad_campaigns')
+              .select('id, name')
+              .eq('account_id', config.account_id)
+              .eq('code', rawCode)
+              .maybeSingle();
+
+            if (campaign) {
+              await db
+                .from('contacts')
+                .update({
+                  lead_source_campaign_id: campaign.id,
+                  lead_source_campaign_name: campaign.name,
+                  lead_source_matched_code: rawCode,
+                  lead_source_matched_at: new Date().toISOString(),
+                })
+                .eq('id', contactId);
+
+              // Best-effort back-fill of the click that likely produced
+              // this contact, if it arrived via /l/{code} rather than a
+              // native Meta ad's prefilled message. Heuristic — the most
+              // recent unmatched click for the campaign, not a
+              // cryptographic pairing — good enough for a rough funnel
+              // count, not for per-click financial attribution.
+              const { data: recentClick } = await db
+                .from('ad_campaign_clicks')
+                .select('id')
+                .eq('campaign_id', campaign.id)
+                .is('matched_contact_id', null)
+                .order('clicked_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (recentClick) {
+                await db
+                  .from('ad_campaign_clicks')
+                  .update({
+                    matched_contact_id: contactId,
+                    matched_at: new Date().toISOString(),
+                  })
+                  .eq('id', recentClick.id);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[uazapi/webhook] ad-campaign attribution failed:', err);
+        }
+      }
 
       // The half that makes this a CRM rather than a message log:
       // Flows, automations, AI auto-reply, broadcast reply tracking and

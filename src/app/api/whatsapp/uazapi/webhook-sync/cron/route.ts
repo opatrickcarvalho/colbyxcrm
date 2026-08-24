@@ -3,9 +3,14 @@ import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
 import { ensureWebhookRegistered } from '@/lib/whatsapp/uazapi-webhook-sync';
-import { getInstancePrivacy, setInstancePresence } from '@/lib/whatsapp/providers';
+import {
+  getInstancePrivacy,
+  instanceStatus,
+  setInstancePresence,
+} from '@/lib/whatsapp/providers';
 
 /**
  * GET /api/whatsapp/uazapi/webhook-sync/cron
@@ -43,6 +48,14 @@ import { getInstancePrivacy, setInstancePresence } from '@/lib/whatsapp/provider
  * must never be flipped silently — so this only surfaces the value
  * for a human to check, it does not change it.
  *
+ * Also backfills `whatsapp_config.connected_number` (069) when missing —
+ * needed by the /l/{code} ad-attribution redirect. `GET
+ * /api/whatsapp/uazapi/status` sets it too, but that route is only
+ * polled by the QR screen during pairing; an account connected before
+ * this column existed would otherwise never revisit that screen and
+ * stay unbackfilled forever. This is the one path that already runs
+ * regularly against every connected account regardless.
+ *
  * Mirrors the other cron routes (shared `x-cron-secret`,
  * `supabaseAdmin()`), and is meant to be pinged by the same pg_cron job
  * that drains the work queues (migration 056 adds this path to
@@ -67,7 +80,7 @@ export async function GET(request: Request) {
   const { data: configs, error } = await admin
     .from('whatsapp_config')
     .select(
-      'id, uazapi_host, uazapi_instance_token, webhook_secret, uazapi_webhook_registration'
+      'id, uazapi_host, uazapi_instance_token, webhook_secret, uazapi_webhook_registration, connected_number'
     )
     .eq('provider', 'uazapi')
     .eq('status', 'connected');
@@ -99,6 +112,19 @@ export async function GET(request: Request) {
 
       const privacy = await getInstancePrivacy(config.uazapi_host, token);
       readReceipts[config.id] = privacy.readreceipts;
+
+      if (!config.connected_number) {
+        const instance = await instanceStatus(config.uazapi_host, token);
+        const connectedNumber = instance.owner
+          ? jidToPhone(instance.owner)?.replace(/\D/g, '')
+          : undefined;
+        if (connectedNumber) {
+          await admin
+            .from('whatsapp_config')
+            .update({ connected_number: connectedNumber })
+            .eq('id', config.id);
+        }
+      }
     } catch (err) {
       console.error(
         '[uazapi/webhook-sync/cron] presence/privacy check failed:',
