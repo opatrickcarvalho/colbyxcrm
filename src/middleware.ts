@@ -90,6 +90,10 @@ export async function middleware(request: NextRequest) {
     // The public redirect itself, /l/[code], deliberately stays OUTSIDE
     // this list — it's the whole point of that route.
     '/ad-links',
+    // Admin editor for the bio page (071_bio_pages.sql). The public
+    // page and its click redirect, /b/[slug] and /b/[slug]/go/[linkId],
+    // deliberately stay OUTSIDE this list for the same reason as /l/[code].
+    '/bio-link',
     // The billing page needs a session like any other dashboard
     // route. Note this is the ONLY thing middleware knows about
     // billing: it checks authentication, never entitlement.
