@@ -1,6 +1,6 @@
 # wacrm — CRM Template for WhatsApp
 
-> Self-hostable CRM template for WhatsApp® — shared inbox, contacts,
+> Colbyx CRM - O melhor CRM para WhatsApp.® — shared inbox, contacts,
 > sales pipelines, broadcasts, and no-code automations. Fork it, brand
 > it, host it.
 

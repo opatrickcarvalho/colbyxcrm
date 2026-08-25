@@ -34,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
       default: name,
       template: `%s — ${name}`,
     },
-    description: "Self-hostable CRM template for WhatsApp.",
+    description: "Colbyx CRM - O melhor CRM para WhatsApp.",
     robots: {
       index: false,
       follow: false,
