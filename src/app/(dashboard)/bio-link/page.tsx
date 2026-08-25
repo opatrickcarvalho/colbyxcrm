@@ -404,15 +404,27 @@ export default function BioLinkPage() {
     const oldIndex = links.findIndex((l) => l.id === activeItem.id);
     const newIndex = links.findIndex((l) => l.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
+    const previous = links;
     const reordered = arrayMove(links, oldIndex, newIndex);
     setLinks(reordered);
-    void fetch('/api/bio-page/links/reorder', {
+    // fetch() only rejects on a network failure, not on a non-2xx
+    // response — a server-side error must be checked explicitly, or
+    // it fails silently while the optimistic reorder above keeps
+    // showing as if it had saved (it reverts on the next reload).
+    fetch('/api/bio-page/links/reorder', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         positions: reordered.map((l, i) => ({ id: l.id, position: i })),
       }),
-    }).catch(() => toast.error('Falha ao salvar a ordem'));
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error();
+      })
+      .catch(() => {
+        setLinks(previous);
+        toast.error('Falha ao salvar a ordem');
+      });
   }
 
   if (loading) {

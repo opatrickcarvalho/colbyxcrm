@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 
-// Batched position save — one upsert for every link, same pattern as
-// PipelineSettings' stage reorder (src/components/pipelines/pipeline-settings.tsx)
-// instead of N sequential UPDATEs.
+// Batched position save. NOTE: this used to be a single upsert() —
+// reverted after it turned out Postgres validates NOT NULL columns
+// (type, label — not present in the reorder payload) against the
+// candidate row BEFORE conflict detection even for an ON CONFLICT DO
+// UPDATE, so every reorder silently 500'd (23502 null-value error).
+// Plain per-row UPDATEs sidestep that entirely — these ids always
+// pre-exist (links are created via POST first), so there's no INSERT
+// path to worry about, only `position` changes, and a handful of
+// parallel round-trips is fine at bio-page-link scale.
 export async function PATCH(request: Request) {
   try {
     const { supabase, accountId } = await requireRole('agent');
@@ -16,34 +22,19 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'positions is required' }, { status: 400 });
     }
 
-    const { data: page } = await supabase
-      .from('bio_pages')
-      .select('id')
-      .eq('account_id', accountId)
-      .maybeSingle();
-    if (!page) {
-      return NextResponse.json({ error: 'Bio page not found' }, { status: 404 });
-    }
+    const results = await Promise.all(
+      positions.map(({ id, position }) =>
+        supabase
+          .from('bio_page_links')
+          .update({ position })
+          .eq('id', id)
+          .eq('account_id', accountId)
+      )
+    );
 
-    const rows = positions.map((p) => ({
-      id: p.id,
-      bio_page_id: page.id,
-      account_id: accountId,
-      position: p.position,
-    }));
-
-    // PostgREST's upsert only touches the columns present in the
-    // payload on the ON CONFLICT UPDATE branch (untouched columns like
-    // `type`/`label` are left alone) — bio_page_id/account_id are
-    // included so the row still satisfies its NOT NULL columns in the
-    // (never actually hit here, since ids always pre-exist) INSERT
-    // branch too.
-    const { error } = await supabase
-      .from('bio_page_links')
-      .upsert(rows, { onConflict: 'id' });
-
-    if (error) {
-      console.error('[PATCH /api/bio-page/links/reorder] error:', error);
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      console.error('[PATCH /api/bio-page/links/reorder] error:', failed.error);
       return NextResponse.json({ error: 'Failed to reorder links' }, { status: 500 });
     }
 
