@@ -58,8 +58,18 @@ export interface BioPagePreviewProps {
   bio?: string | null;
   avatarUrl?: string | null;
   links: BioPagePreviewLink[];
-  /** Real destination href for a link click. Omitted -> non-interactive preview (dashboard). */
-  hrefFor?: (link: BioPagePreviewLink) => string;
+  /**
+   * Bio-page slug for building the real /b/{slug}/go/{linkId} click
+   * href. Omitted -> non-interactive preview (dashboard).
+   *
+   * Plain data, not a callback: this component is a Client Component
+   * ('use client', for the nsfw click-gate state below) rendered from
+   * a Server Component (src/app/b/[slug]/page.tsx) — a function prop
+   * can't cross that boundary, only serializable data can.
+   */
+  goSlug?: string;
+  /** Appended verbatim to each go href, e.g. "?utm_source=...". */
+  goQuery?: string;
   className?: string;
 }
 
@@ -68,9 +78,13 @@ export function BioPagePreview({
   bio,
   avatarUrl,
   links,
-  hrefFor,
+  goSlug,
+  goQuery,
   className,
 }: BioPagePreviewProps) {
+  const hrefFor = goSlug
+    ? (link: BioPagePreviewLink) => `/b/${goSlug}/go/${link.id}${goQuery ?? ''}`
+    : undefined;
   // Set only on the real public page (hrefFor present) when a visitor
   // clicks an nsfw button — holds the click until they confirm, then
   // navigation resumes to this same href.

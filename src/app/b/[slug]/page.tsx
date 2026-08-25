@@ -132,7 +132,8 @@ export default async function BioPage({
         bio={page.bio}
         avatarUrl={page.avatar_url}
         links={links}
-        hrefFor={(link) => `/b/${slug}/go/${link.id}${utmSuffix}`}
+        goSlug={slug}
+        goQuery={utmSuffix}
         className="min-h-screen"
       />
     </main>
