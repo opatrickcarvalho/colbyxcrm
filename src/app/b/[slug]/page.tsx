@@ -36,7 +36,9 @@ async function loadPage(slug: string) {
   const db = supabaseAdmin();
   const { data: page } = await db
     .from('bio_pages')
-    .select('id, display_name, bio, avatar_url, active')
+    .select(
+      'id, display_name, bio, avatar_url, active, button_color, text_color'
+    )
     .eq('slug_key', slug.toLowerCase())
     .maybeSingle();
 
@@ -121,6 +123,8 @@ export default async function BioPage({
         bio={page.bio}
         avatarUrl={page.avatar_url}
         links={links}
+        buttonColor={page.button_color}
+        textColor={page.text_color}
         hrefFor={(link) => `/b/${slug}/go/${link.id}${utmSuffix}`}
         className="min-h-screen"
       />

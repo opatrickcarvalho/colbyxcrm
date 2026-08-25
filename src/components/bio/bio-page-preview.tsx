@@ -8,6 +8,12 @@
 // Every link type renders as a full-width button (social included —
 // a bare icon read as "not a button" in practice); `embed` renders
 // inline instead when its URL resolves to a known platform.
+//
+// buttonColor/textColor are the two theme knobs the editor exposes —
+// applied as inline styles (not classes) so an arbitrary hex value
+// works without a Tailwind safelist entry. textColor is set once on
+// the root and inherited everywhere (button labels included); only
+// each button's own background needs its own inline style.
 // ============================================================
 
 import { Link as LinkIcon, MessageCircle } from 'lucide-react';
@@ -15,6 +21,7 @@ import { Link as LinkIcon, MessageCircle } from 'lucide-react';
 import { resolveEmbedUrl } from '@/lib/bio/embed';
 import { SocialIcon } from '@/lib/bio/social-icons';
 import { isSocialPlatform, type BioLinkType } from '@/lib/bio/link-types';
+import { DEFAULT_BUTTON_COLOR, DEFAULT_TEXT_COLOR } from '@/lib/bio/theme';
 
 export interface BioPagePreviewLink {
   id: string;
@@ -29,6 +36,8 @@ export interface BioPagePreviewProps {
   bio?: string | null;
   avatarUrl?: string | null;
   links: BioPagePreviewLink[];
+  buttonColor?: string;
+  textColor?: string;
   /** Real destination href for a link click. Omitted -> non-interactive preview (dashboard). */
   hrefFor?: (link: BioPagePreviewLink) => string;
   className?: string;
@@ -39,12 +48,18 @@ export function BioPagePreview({
   bio,
   avatarUrl,
   links,
+  buttonColor = DEFAULT_BUTTON_COLOR,
+  textColor = DEFAULT_TEXT_COLOR,
   hrefFor,
   className,
 }: BioPagePreviewProps) {
+  const buttonClass =
+    'flex items-center justify-center gap-2 rounded-xl border border-neutral-800 px-4 py-3.5 text-sm font-medium transition-[filter] hover:brightness-90';
+
   return (
     <div
-      className={`flex flex-col items-center gap-6 bg-neutral-950 px-6 py-10 text-neutral-100 ${className ?? ''}`}
+      className={`flex flex-col items-center gap-6 bg-neutral-950 px-6 py-10 ${className ?? ''}`}
+      style={{ color: textColor }}
     >
       <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
         {avatarUrl ? (
@@ -60,7 +75,7 @@ export function BioPagePreview({
           </div>
         )}
         <h1 className="text-lg font-semibold">{displayName || 'Sua página'}</h1>
-        {bio && <p className="text-sm text-neutral-400">{bio}</p>}
+        {bio && <p className="text-sm opacity-80">{bio}</p>}
       </div>
 
       <div className="flex w-full max-w-md flex-col gap-3">
@@ -92,28 +107,34 @@ export function BioPagePreview({
                 platform={isSocialPlatform(link.icon) ? link.icon : 'email'}
               />
             ) : link.type === 'whatsapp' ? (
-              <MessageCircle className="size-4 shrink-0 text-neutral-400" />
+              <MessageCircle className="size-4 shrink-0 opacity-60" />
             ) : (
-              <LinkIcon className="size-4 shrink-0 text-neutral-400" />
+              <LinkIcon className="size-4 shrink-0 opacity-60" />
             );
 
-          const buttonClass =
-            'flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3.5 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800';
-
           return hrefFor ? (
-            <a key={link.id} href={hrefFor(link)} className={buttonClass}>
+            <a
+              key={link.id}
+              href={hrefFor(link)}
+              className={buttonClass}
+              style={{ backgroundColor: buttonColor }}
+            >
               {badge}
               {link.label}
             </a>
           ) : (
-            <div key={link.id} className={buttonClass}>
+            <div
+              key={link.id}
+              className={buttonClass}
+              style={{ backgroundColor: buttonColor }}
+            >
               {badge}
               {link.label}
             </div>
           );
         })}
         {links.length === 0 && (
-          <p className="py-6 text-center text-sm text-neutral-500">
+          <p className="py-6 text-center text-sm opacity-60">
             Nenhum botão ainda.
           </p>
         )}

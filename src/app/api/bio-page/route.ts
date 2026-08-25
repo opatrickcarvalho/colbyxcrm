@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
-import { generateCampaignCode, slugifyCampaignCode } from '@/lib/attribution/code';
+import {
+  generateCampaignCode,
+  slugifyCampaignCode,
+} from '@/lib/attribution/code';
+import { isHexColor } from '@/lib/bio/theme';
 
 // Dashboard CRUD for the account's single bio_pages row (see
 // 071_bio_pages.sql). One page per account — no list endpoint needed.
@@ -18,7 +22,10 @@ export async function GET() {
 
     if (error) {
       console.error('[GET /api/bio-page] error:', error);
-      return NextResponse.json({ error: 'Failed to load bio page' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to load bio page' },
+        { status: 500 }
+      );
     }
 
     if (!page) {
@@ -62,7 +69,10 @@ export async function POST(request: Request) {
     };
 
     if (!display_name || !display_name.trim()) {
-      return NextResponse.json({ error: 'display_name is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'display_name is required' },
+        { status: 400 }
+      );
     }
 
     // Same authoritative-vs-negotiable slug rule as /api/ad-campaigns:
@@ -70,18 +80,27 @@ export async function POST(request: Request) {
     // auto-derived one retries with a random suffix instead of failing.
     if (requestedSlug !== undefined && !slugifyCampaignCode(requestedSlug)) {
       return NextResponse.json(
-        { error: 'slug must contain at least one letter, digit, or underscore' },
+        {
+          error: 'slug must contain at least one letter, digit, or underscore',
+        },
         { status: 400 }
       );
     }
-    const explicitSlug = requestedSlug ? slugifyCampaignCode(requestedSlug) : '';
-    const baseSlug = explicitSlug || slugifyCampaignCode(display_name) || generateCampaignCode();
+    const explicitSlug = requestedSlug
+      ? slugifyCampaignCode(requestedSlug)
+      : '';
+    const baseSlug =
+      explicitSlug ||
+      slugifyCampaignCode(display_name) ||
+      generateCampaignCode();
 
     let lastError: unknown = null;
     const maxAttempts = explicitSlug ? 1 : 5;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const slug =
-        attempt === 0 ? baseSlug : `${baseSlug}${generateCampaignCode().slice(0, 4)}`.slice(0, 30);
+        attempt === 0
+          ? baseSlug
+          : `${baseSlug}${generateCampaignCode().slice(0, 4)}`.slice(0, 30);
 
       const { data: page, error } = await supabase
         .from('bio_pages')
@@ -94,7 +113,10 @@ export async function POST(request: Request) {
         .single();
 
       if (!error && page) {
-        return NextResponse.json({ data: { ...page, view_count: 0 } }, { status: 201 });
+        return NextResponse.json(
+          { data: { ...page, view_count: 0 } },
+          { status: 201 }
+        );
       }
       lastError = error;
       if (!isUniqueViolation(error)) break;
@@ -108,7 +130,10 @@ export async function POST(request: Request) {
     }
 
     console.error('[POST /api/bio-page] insert error:', lastError);
-    return NextResponse.json({ error: 'Failed to create bio page' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to create bio page' },
+      { status: 500 }
+    );
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -123,29 +148,63 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { display_name, bio, avatar_url, active, slug } = body as {
+    const {
+      display_name,
+      bio,
+      avatar_url,
+      active,
+      slug,
+      button_color,
+      text_color,
+    } = body as {
       display_name?: string;
       bio?: string | null;
       avatar_url?: string | null;
       active?: boolean;
       slug?: string;
+      button_color?: string;
+      text_color?: string;
     };
 
     const patch: Record<string, unknown> = {};
     if (display_name !== undefined) {
       if (!display_name.trim()) {
-        return NextResponse.json({ error: 'display_name cannot be empty' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'display_name cannot be empty' },
+          { status: 400 }
+        );
       }
       patch.display_name = display_name.trim();
     }
     if (bio !== undefined) patch.bio = bio;
     if (avatar_url !== undefined) patch.avatar_url = avatar_url;
     if (active !== undefined) patch.active = Boolean(active);
+    if (button_color !== undefined) {
+      if (!isHexColor(button_color)) {
+        return NextResponse.json(
+          { error: 'button_color must be a #rrggbb hex color' },
+          { status: 400 }
+        );
+      }
+      patch.button_color = button_color;
+    }
+    if (text_color !== undefined) {
+      if (!isHexColor(text_color)) {
+        return NextResponse.json(
+          { error: 'text_color must be a #rrggbb hex color' },
+          { status: 400 }
+        );
+      }
+      patch.text_color = text_color;
+    }
     if (slug !== undefined) {
       const sanitized = slugifyCampaignCode(slug);
       if (!sanitized) {
         return NextResponse.json(
-          { error: 'slug must contain at least one letter, digit, or underscore' },
+          {
+            error:
+              'slug must contain at least one letter, digit, or underscore',
+          },
           { status: 400 }
         );
       }
@@ -171,7 +230,10 @@ export async function PATCH(request: Request) {
         );
       }
       console.error('[PATCH /api/bio-page] error:', error);
-      return NextResponse.json({ error: 'Bio page not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Bio page not found' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ data: page });
@@ -184,11 +246,17 @@ export async function DELETE() {
   try {
     const { supabase, accountId } = await requireRole('agent');
 
-    const { error } = await supabase.from('bio_pages').delete().eq('account_id', accountId);
+    const { error } = await supabase
+      .from('bio_pages')
+      .delete()
+      .eq('account_id', accountId);
 
     if (error) {
       console.error('[DELETE /api/bio-page] error:', error);
-      return NextResponse.json({ error: 'Failed to delete bio page' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to delete bio page' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });

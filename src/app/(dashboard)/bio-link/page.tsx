@@ -57,6 +57,11 @@ import {
   type BioLinkType,
 } from '@/lib/bio/link-types';
 import { BioPagePreview } from '@/components/bio/bio-page-preview';
+import {
+  DEFAULT_BUTTON_COLOR,
+  DEFAULT_TEXT_COLOR,
+  isHexColor,
+} from '@/lib/bio/theme';
 
 // Client-side mirror of slugifyCampaignCode — see
 // src/app/(dashboard)/ad-links/new/page.tsx for why this isn't
@@ -85,6 +90,8 @@ interface BioPage {
   avatar_url: string | null;
   active: boolean;
   view_count: number;
+  button_color: string;
+  text_color: string;
 }
 
 interface BioPageLink {
@@ -130,6 +137,8 @@ export default function BioLinkPage() {
   const [slug, setSlug] = useState('');
   const [bio, setBio] = useState('');
   const [active, setActive] = useState(true);
+  const [buttonColor, setButtonColor] = useState(DEFAULT_BUTTON_COLOR);
+  const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -167,6 +176,8 @@ export default function BioLinkPage() {
         setSlug(pageData.data.slug);
         setBio(pageData.data.bio ?? '');
         setActive(pageData.data.active);
+        setButtonColor(pageData.data.button_color ?? DEFAULT_BUTTON_COLOR);
+        setTextColor(pageData.data.text_color ?? DEFAULT_TEXT_COLOR);
       }
     } catch (err) {
       toast.error(
@@ -254,6 +265,8 @@ export default function BioLinkPage() {
           bio: bio.trim() || null,
           avatar_url: avatarUrl,
           active,
+          button_color: buttonColor,
+          text_color: textColor,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -565,6 +578,21 @@ export default function BioLinkPage() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <ColorField
+                  id="button-color"
+                  label="Cor dos botões"
+                  value={buttonColor}
+                  onChange={setButtonColor}
+                />
+                <ColorField
+                  id="text-color"
+                  label="Cor da fonte"
+                  value={textColor}
+                  onChange={setTextColor}
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 <Label htmlFor="page-active">Página ativa</Label>
                 <Switch
@@ -645,6 +673,8 @@ export default function BioLinkPage() {
               bio={bio}
               avatarUrl={currentAvatar}
               links={previewLinks}
+              buttonColor={buttonColor}
+              textColor={textColor}
             />
           </div>
         </div>
@@ -758,6 +788,57 @@ export default function BioLinkPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ColorField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  // A local text buffer separate from `value` — typing an in-progress
+  // hex string ("#17") must stay on screen even though it isn't valid
+  // yet, so it can't be a straight controlled input off the (already
+  // validated) parent value.
+  const [text, setText] = useState(value);
+  // Legitimate prop-driven sync (same pattern as PipelineSettings) —
+  // resyncs when `value` changes externally (e.g. page load), not on
+  // every local keystroke (those go through onChange below instead).
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => setText(value), [value]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          id={id}
+          value={value}
+          onChange={(e) => {
+            setText(e.target.value);
+            onChange(e.target.value);
+          }}
+          className="border-border h-9 w-10 shrink-0 cursor-pointer rounded-md border bg-transparent p-0.5"
+        />
+        <Input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (isHexColor(e.target.value)) onChange(e.target.value);
+          }}
+          maxLength={7}
+          className="font-mono text-sm"
+        />
+      </div>
     </div>
   );
 }
