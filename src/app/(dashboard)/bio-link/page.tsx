@@ -50,7 +50,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { BIO_LINK_TYPE_LABELS, BIO_LINK_TYPES, SOCIAL_PLATFORMS, type BioLinkType } from '@/lib/bio/link-types';
+import {
+  BIO_LINK_TYPE_LABELS,
+  BIO_LINK_TYPES,
+  SOCIAL_PLATFORMS,
+  type BioLinkType,
+} from '@/lib/bio/link-types';
+import { BioPagePreview } from '@/components/bio/bio-page-preview';
 
 // Client-side mirror of slugifyCampaignCode — see
 // src/app/(dashboard)/ad-links/new/page.tsx for why this isn't
@@ -64,7 +70,12 @@ function previewSlug(input: string): string {
 }
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
-const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const ALLOWED_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+]);
 
 interface BioPage {
   id: string;
@@ -144,7 +155,8 @@ export default function BioLinkPage() {
       const pageData = await pageRes.json().catch(() => ({}));
       const linksData = await linksRes.json().catch(() => ({}));
       const campaignsData = await campaignsRes.json().catch(() => ({}));
-      if (!pageRes.ok) throw new Error(pageData.error ?? 'Falha ao carregar página');
+      if (!pageRes.ok)
+        throw new Error(pageData.error ?? 'Falha ao carregar página');
 
       setPage(pageData.data ?? null);
       setLinks(linksData.data ?? []);
@@ -157,7 +169,9 @@ export default function BioLinkPage() {
         setActive(pageData.data.active);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha ao carregar página');
+      toast.error(
+        err instanceof Error ? err.message : 'Falha ao carregar página'
+      );
     } finally {
       setLoading(false);
     }
@@ -223,7 +237,8 @@ export default function BioLinkPage() {
             upsert: true,
             contentType: pendingAvatar.type,
           });
-        if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`);
+        if (uploadError)
+          throw new Error(`Falha no upload: ${uploadError.message}`);
         const {
           data: { publicUrl },
         } = supabase.storage.from('bio-page-media').getPublicUrl(path);
@@ -315,7 +330,9 @@ export default function BioLinkPage() {
         icon: linkIcon || undefined,
       };
       const res = await fetch(
-        editingLink ? `/api/bio-page/links/${editingLink.id}` : '/api/bio-page/links',
+        editingLink
+          ? `/api/bio-page/links/${editingLink.id}`
+          : '/api/bio-page/links',
         {
           method: editingLink ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -335,21 +352,27 @@ export default function BioLinkPage() {
   }
 
   async function handleToggleActive(link: BioPageLink, value: boolean) {
-    setLinks((prev) => prev.map((l) => (l.id === link.id ? { ...l, active: value } : l)));
+    setLinks((prev) =>
+      prev.map((l) => (l.id === link.id ? { ...l, active: value } : l))
+    );
     const res = await fetch(`/api/bio-page/links/${link.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: value }),
     });
     if (!res.ok) {
-      setLinks((prev) => prev.map((l) => (l.id === link.id ? { ...l, active: !value } : l)));
+      setLinks((prev) =>
+        prev.map((l) => (l.id === link.id ? { ...l, active: !value } : l))
+      );
       toast.error('Falha ao atualizar botão');
     }
   }
 
   async function handleDeleteLink(link: BioPageLink) {
     if (!confirm(`Excluir o botão "${link.label}"?`)) return;
-    const res = await fetch(`/api/bio-page/links/${link.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/bio-page/links/${link.id}`, {
+      method: 'DELETE',
+    });
     if (!res.ok) {
       toast.error('Falha ao excluir botão');
       return;
@@ -358,7 +381,9 @@ export default function BioLinkPage() {
     toast.success('Botão excluído');
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   function handleReorder(event: DragEndEvent) {
     const { active: activeItem, over } = event;
@@ -380,7 +405,7 @@ export default function BioLinkPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="text-primary h-6 w-6 animate-spin" />
       </div>
     );
   }
@@ -389,9 +414,12 @@ export default function BioLinkPage() {
     return (
       <div className="mx-auto max-w-xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Sua página de links</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Crie uma página pública com seus botões — como um Linktree, com cada clique medido.
+          <h1 className="text-foreground text-2xl font-bold">
+            Sua página de links
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Crie uma página pública com seus botões — como um Linktree, com cada
+            clique medido.
           </p>
         </div>
         <Card>
@@ -417,16 +445,22 @@ export default function BioLinkPage() {
                 className="font-mono"
                 placeholder="Ex: oticavistabela"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 Sua página ficará em{' '}
                 <span className="font-mono">
-                  /b/{(newSlugTouched ? newSlug : previewSlug(newDisplayName)) || 'endereco'}
+                  /b/
+                  {(newSlugTouched ? newSlug : previewSlug(newDisplayName)) ||
+                    'endereco'}
                 </span>
               </p>
             </div>
             <div className="flex justify-end pt-2">
               <Button onClick={handleCreate} disabled={creating}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {creating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
                 Criar página
               </Button>
             </div>
@@ -439,124 +473,197 @@ export default function BioLinkPage() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const publicUrl = `${origin}/b/${slug}`;
   const currentAvatar = previewUrl ?? page.avatar_url;
+  // Mirrors what the public page actually renders (it only ever
+  // selects active links) so the preview doesn't show a button a
+  // visitor wouldn't see.
+  const previewLinks = links.filter((l) => l.active);
 
   return (
-    <div className="mx-auto max-w-xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Sua página de links</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {page.view_count} visualizaç{page.view_count === 1 ? 'ão' : 'ões'} até agora
+        <h1 className="text-foreground text-2xl font-bold">
+          Sua página de links
+        </h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          {page.view_count} visualizaç{page.view_count === 1 ? 'ão' : 'ões'} até
+          agora
         </p>
       </div>
 
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          <div className="flex items-center gap-4">
-            <Avatar size="lg" className="size-16">
-              {currentAvatar ? <AvatarImage src={currentAvatar} alt={displayName} /> : null}
-              <AvatarFallback className="bg-primary/10 text-base text-primary">
-                {displayName.charAt(0).toUpperCase() || 'B'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={onPickAvatar}
-              />
-              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-4 w-4" />
-                Alterar foto
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="display-name">Nome exibido</Label>
-            <Input id="display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="slug">Endereço</Label>
-            <Input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(previewSlug(e.target.value))}
-              className="font-mono"
-            />
-            <div className="flex gap-2">
-              <Input value={publicUrl} readOnly className="font-mono text-sm" />
-              <Button type="button" variant="outline" onClick={() => copy(publicUrl)}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
-            <Textarea id="bio" rows={2} value={bio} onChange={(e) => setBio(e.target.value)} />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="page-active">Página ativa</Label>
-            <Switch id="page-active" checked={active} onCheckedChange={setActive} />
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button onClick={handleSaveSettings} disabled={savingSettings}>
-              {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-3 pt-6">
-          <div className="flex items-center justify-between">
-            <Label>Botões</Label>
-            <Button type="button" variant="outline" size="sm" onClick={openAddDialog}>
-              <Plus className="h-3 w-3" />
-              Adicionar botão
-            </Button>
-          </div>
-
-          {links.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Nenhum botão ainda — adicione o primeiro.
-            </p>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorder}>
-              <SortableContext items={links.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {links.map((link) => (
-                    <SortableLinkRow
-                      key={link.id}
-                      link={link}
-                      campaigns={campaigns}
-                      onEdit={() => openEditDialog(link)}
-                      onToggleActive={(v) => handleToggleActive(link, v)}
-                      onDelete={() => handleDeleteLink(link)}
-                    />
-                  ))}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="max-w-xl space-y-6">
+          <Card>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex items-center gap-4">
+                <Avatar size="lg" className="size-16">
+                  {currentAvatar ? (
+                    <AvatarImage src={currentAvatar} alt={displayName} />
+                  ) : null}
+                  <AvatarFallback className="bg-primary/10 text-primary text-base">
+                    {displayName.charAt(0).toUpperCase() || 'B'}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={onPickAvatar}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Alterar foto
+                  </Button>
                 </div>
-              </SortableContext>
-            </DndContext>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="display-name">Nome exibido</Label>
+                <Input
+                  id="display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="slug">Endereço</Label>
+                <Input
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(previewSlug(e.target.value))}
+                  className="font-mono"
+                />
+                <div className="flex gap-2">
+                  <Input
+                    value={publicUrl}
+                    readOnly
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => copy(publicUrl)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea
+                  id="bio"
+                  rows={2}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="page-active">Página ativa</Label>
+                <Switch
+                  id="page-active"
+                  checked={active}
+                  onCheckedChange={setActive}
+                />
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSaveSettings} disabled={savingSettings}>
+                  {savingSettings ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Salvar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <div className="flex items-center justify-between">
+                <Label>Botões</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openAddDialog}
+                >
+                  <Plus className="h-3 w-3" />
+                  Adicionar botão
+                </Button>
+              </div>
+
+              {links.length === 0 ? (
+                <p className="text-muted-foreground py-6 text-center text-sm">
+                  Nenhum botão ainda — adicione o primeiro.
+                </p>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleReorder}
+                >
+                  <SortableContext
+                    items={links.map((l) => l.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {links.map((link) => (
+                        <SortableLinkRow
+                          key={link.id}
+                          link={link}
+                          campaigns={campaigns}
+                          onEdit={() => openEditDialog(link)}
+                          onToggleActive={(v) => handleToggleActive(link, v)}
+                          onDelete={() => handleDeleteLink(link)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:sticky lg:top-6">
+          <p className="text-muted-foreground mb-2 text-xs font-medium">
+            Prévia da página
+          </p>
+          <div className="mx-auto max-h-[640px] w-full max-w-[300px] overflow-y-auto rounded-[2rem] border-8 border-neutral-800 bg-neutral-950 shadow-lg">
+            <BioPagePreview
+              displayName={displayName || 'Sua página'}
+              bio={bio}
+              avatarUrl={currentAvatar}
+              links={previewLinks}
+            />
+          </div>
+        </div>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingLink ? 'Editar botão' : 'Novo botão'}</DialogTitle>
+            <DialogTitle>
+              {editingLink ? 'Editar botão' : 'Novo botão'}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label>Tipo</Label>
-              <Select value={linkType} onValueChange={(v) => setLinkType(v as BioLinkType)}>
+              <Select
+                value={linkType}
+                onValueChange={(v) => setLinkType(v as BioLinkType)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -572,13 +679,20 @@ export default function BioLinkPage() {
 
             <div className="grid gap-2">
               <Label htmlFor="link-label">Nome do botão</Label>
-              <Input id="link-label" value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} />
+              <Input
+                id="link-label"
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+              />
             </div>
 
             {linkType === 'whatsapp' ? (
               <div className="grid gap-2">
                 <Label>Campanha de WhatsApp</Label>
-                <Select value={linkCampaignId} onValueChange={(v) => setLinkCampaignId(v ?? '')}>
+                <Select
+                  value={linkCampaignId}
+                  onValueChange={(v) => setLinkCampaignId(v ?? '')}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Escolha uma campanha" />
                   </SelectTrigger>
@@ -591,7 +705,7 @@ export default function BioLinkPage() {
                   </SelectContent>
                 </Select>
                 {campaigns.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     Crie uma campanha em Links de Anúncio primeiro.
                   </p>
                 )}
@@ -611,7 +725,10 @@ export default function BioLinkPage() {
             {linkType === 'social' && (
               <div className="grid gap-2">
                 <Label>Ícone</Label>
-                <Select value={linkIcon} onValueChange={(v) => setLinkIcon(v ?? '')}>
+                <Select
+                  value={linkIcon}
+                  onValueChange={(v) => setLinkIcon(v ?? '')}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Escolha a rede" />
                   </SelectTrigger>
@@ -631,7 +748,11 @@ export default function BioLinkPage() {
               Cancelar
             </Button>
             <Button onClick={handleSaveLink} disabled={savingLink}>
-              {savingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {savingLink ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
               Salvar
             </Button>
           </DialogFooter>
@@ -654,7 +775,14 @@ function SortableLinkRow({
   onToggleActive: (v: boolean) => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: link.id,
   });
   const style = {
@@ -665,32 +793,45 @@ function SortableLinkRow({
 
   const subtitle =
     link.type === 'whatsapp'
-      ? campaigns.find((c) => c.id === link.ad_campaign_id)?.name ?? 'Campanha removida'
+      ? (campaigns.find((c) => c.id === link.ad_campaign_id)?.name ??
+        'Campanha removida')
       : link.url;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-lg border border-border bg-muted p-2"
+      className="border-border bg-muted flex items-center gap-2 rounded-lg border p-2"
     >
       <button
         type="button"
         {...attributes}
         {...listeners}
-        className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        className="text-muted-foreground hover:text-foreground cursor-grab touch-none active:cursor-grabbing"
         aria-label="Arraste para reordenar"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
-        <p className="truncate text-sm font-medium text-foreground">{link.label}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {BIO_LINK_TYPE_LABELS[link.type]} · {subtitle} · {link.click_count} cliques
+      <button
+        type="button"
+        onClick={onEdit}
+        className="min-w-0 flex-1 text-left"
+      >
+        <p className="text-foreground truncate text-sm font-medium">
+          {link.label}
+        </p>
+        <p className="text-muted-foreground truncate text-xs">
+          {BIO_LINK_TYPE_LABELS[link.type]} · {subtitle} · {link.click_count}{' '}
+          cliques
         </p>
       </button>
       <Switch checked={link.active} onCheckedChange={onToggleActive} />
-      <Button variant="ghost" size="icon-xs" onClick={onDelete} className="text-muted-foreground hover:text-red-400">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onClick={onDelete}
+        className="text-muted-foreground hover:text-red-400"
+      >
         <Trash2 className="h-3 w-3" />
       </Button>
     </div>
