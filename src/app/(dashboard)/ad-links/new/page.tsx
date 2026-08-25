@@ -1,15 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Save } from 'lucide-react';
 
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { Tag } from '@/types';
+
+const NO_TAG = '__none__';
 
 const DEFAULT_TEMPLATE = 'Olá! Vim pelo anúncio @{code}';
 
@@ -28,11 +40,26 @@ function previewSlug(input: string): string {
 
 export default function NewAdCampaignPage() {
   const router = useRouter();
+  const supabase = createClient();
+  const { accountId } = useAuth();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [codeTouched, setCodeTouched] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState(DEFAULT_TEMPLATE);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagId, setTagId] = useState(NO_TAG);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!accountId) return;
+    supabase
+      .from('tags')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('name')
+      .then(({ data }) => setTags(data ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   // The code follows the name until the operator edits it directly —
   // same pattern as a URL slug field following a title.
@@ -57,6 +84,7 @@ export default function NewAdCampaignPage() {
           name,
           message_template: messageTemplate,
           code: codeTouched ? code : undefined,
+          tag_id: tagId === NO_TAG ? null : tagId,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -124,6 +152,29 @@ export default function NewAdCampaignPage() {
               <span className="font-mono">
                 {messageTemplate.replace('{code}', displayedCode || 'codigo')}
               </span>
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tag">Etiqueta a aplicar no lead</Label>
+            <Select value={tagId} onValueChange={(v) => setTagId(v ?? NO_TAG)}>
+              <SelectTrigger id="tag" className="w-full">
+                <SelectValue placeholder="Nenhuma" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TAG}>Nenhuma</SelectItem>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.id} value={tag.id}>
+                    {tag.name}
+                    {tag.whatsapp_label_id ? ' 🔗' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Aplicada automaticamente no contato quando ele chegar por essa campanha. Etiquetas
+              marcadas com 🔗 estão sincronizadas com uma etiqueta do WhatsApp e também aparecem no
+              celular. Gerencie isso em Configurações → Campos e etiquetas.
             </p>
           </div>
 

@@ -70,10 +70,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { name, message_template, code: requestedCode } = body as {
+    const { name, message_template, code: requestedCode, tag_id } = body as {
       name?: string;
       message_template?: string;
       code?: string;
+      tag_id?: string | null;
     };
 
     if (!name || !name.trim()) {
@@ -103,6 +104,18 @@ export async function POST(request: Request) {
     const explicitCode = requestedCode ? slugifyCampaignCode(requestedCode) : '';
     const baseCode = explicitCode || slugifyCampaignCode(name) || generateCampaignCode();
 
+    if (tag_id) {
+      const { data: tag } = await supabase
+        .from('tags')
+        .select('id')
+        .eq('id', tag_id)
+        .eq('account_id', accountId)
+        .maybeSingle();
+      if (!tag) {
+        return NextResponse.json({ error: 'Tag not found in this account' }, { status: 404 });
+      }
+    }
+
     // code_key (lower(code), see 070_ad_campaigns_readable_code.sql) is
     // globally unique — not per-account, since the /l/{code} redirect
     // and the webhook's code-only lookup both start from just the code,
@@ -121,6 +134,7 @@ export async function POST(request: Request) {
           name: name.trim(),
           message_template: template,
           code,
+          tag_id: tag_id || null,
         })
         .select()
         .single();

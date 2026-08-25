@@ -15,6 +15,8 @@ import { jidToPhone } from '@/lib/whatsapp/phone-utils';
 import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { extractCampaignCode } from '@/lib/attribution/code';
+import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
+import { applyTagWhatsappLabel } from '@/lib/whatsapp/label-write';
 
 /**
  * POST /api/whatsapp/uazapi/webhook/[secret]
@@ -1552,7 +1554,7 @@ export async function POST(
           if (rawCode) {
             const { data: campaign } = await db
               .from('ad_campaigns')
-              .select('id, name')
+              .select('id, name, tag_id')
               .eq('account_id', config.account_id)
               .eq('code_key', rawCode.toLowerCase())
               .maybeSingle();
@@ -1567,6 +1569,37 @@ export async function POST(
                   lead_source_matched_at: new Date().toISOString(),
                 })
                 .eq('id', contactId);
+
+              // Auto-tag, e.g. "Veio do Anúncio" — through the central
+              // tag writer so this also fires any tag_added automation
+              // the operator has configured, exactly like a manual tag.
+              // If that tag mirrors a WhatsApp Business label
+              // (tags.whatsapp_label_id, 072), applyTagWhatsappLabel
+              // pushes the label onto the phone too. Both best-effort:
+              // neither should undo the attribution above on failure.
+              if (campaign.tag_id) {
+                try {
+                  const result = await addContactTagAndDispatch({
+                    db,
+                    accountId: config.account_id,
+                    contactId,
+                    tagId: campaign.tag_id,
+                  });
+                  if (result.added) {
+                    await applyTagWhatsappLabel(
+                      db,
+                      config.account_id,
+                      contactId,
+                      campaign.tag_id
+                    );
+                  }
+                } catch (err) {
+                  console.error(
+                    '[uazapi/webhook] ad-campaign auto-tag failed:',
+                    err
+                  );
+                }
+              }
 
               // Best-effort back-fill of the click that likely produced
               // this message, if it arrived via /l/{code} rather than a

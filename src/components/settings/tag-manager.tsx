@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
@@ -22,6 +23,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
 import type { Tag } from '@/types';
@@ -37,10 +45,57 @@ const PRESET_COLORS = [
   { name: 'pink', value: '#ec4899' },
 ];
 
+interface WhatsappLabel {
+  id: string;
+  name: string;
+  color_code: number;
+}
+
+const NO_SYNC = '__none__';
+
+/** Small "Sincronizar com etiqueta do WhatsApp" select, shared by the
+ *  create row and the edit dialog. Renders nothing when the account
+ *  has no WhatsApp labels to offer (not UAZAPI-connected, or none
+ *  created on the phone yet) — there's nothing useful to pick. */
+function WhatsappLabelSelect({
+  labels,
+  value,
+  onChange,
+  t,
+}: {
+  labels: WhatsappLabel[];
+  value: string;
+  onChange: (value: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (labels.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{t('syncWithWhatsappLabel')}</Label>
+      <Select value={value} onValueChange={(v) => onChange(v ?? NO_SYNC)}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={t('syncWithWhatsappLabelNone')} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_SYNC}>{t('syncWithWhatsappLabelNone')}</SelectItem>
+          {labels.map((l) => (
+            <SelectItem key={l.id} value={l.id}>
+              {l.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-[11px] text-muted-foreground">{t('syncWithWhatsappLabelHint')}</p>
+    </div>
+  );
+}
+
 /**
  * Tags card — colour-coded contact labels. Creation is an inline row
- * (name + colour swatch + Add); deletion goes through a confirmation
- * dialog since it detaches the tag from every contact.
+ * (name + colour swatch + optional WhatsApp label sync + Add); clicking
+ * an existing tag opens an edit dialog for the same fields; deletion
+ * goes through a confirmation dialog since it detaches the tag from
+ * every contact.
  */
 export function TagManager() {
   const t = useTranslations('Settings.tagsAndFields');
@@ -49,12 +104,18 @@ export function TagManager() {
 
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [whatsappLabels, setWhatsappLabels] = useState<WhatsappLabel[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tagToDelete, setTagToDelete] = useState<Tag | null>(null);
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editSync, setEditSync] = useState(NO_SYNC);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[3].value);
+  const [newTagSync, setNewTagSync] = useState(NO_SYNC);
 
   useEffect(() => {
     if (authLoading) return;
@@ -63,6 +124,7 @@ export function TagManager() {
       return;
     }
     fetchTags(accountId, user.id);
+    fetchWhatsappLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, accountId, user?.id]);
 
@@ -86,6 +148,19 @@ export function TagManager() {
     }
   }
 
+  // Best-effort: an account not connected via UAZAPI (or with no
+  // labels on the phone yet) simply gets an empty list, and the sync
+  // picker hides itself — never blocks the rest of the tags UI.
+  async function fetchWhatsappLabels() {
+    try {
+      const res = await fetch('/api/whatsapp/labels', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      setWhatsappLabels(data?.labels ?? []);
+    } catch (err) {
+      console.error('Failed to fetch WhatsApp labels:', err);
+    }
+  }
+
   async function handleCreate() {
     if (!newTagName.trim()) {
       toast.error(t('nameRequired'));
@@ -106,6 +181,7 @@ export function TagManager() {
         account_id: accountId,
         name: newTagName.trim(),
         color: selectedColor,
+        whatsapp_label_id: newTagSync === NO_SYNC ? null : newTagSync,
       });
 
       if (error) throw error;
@@ -113,10 +189,48 @@ export function TagManager() {
       toast.success(t('tagCreated'));
       setNewTagName('');
       setSelectedColor(PRESET_COLORS[3].value);
+      setNewTagSync(NO_SYNC);
       await fetchTags(accountId, user.id);
     } catch (err) {
       console.error('Create error:', err);
       toast.error(t('failedToCreateTag'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openEdit(tag: Tag) {
+    setEditingTag(tag);
+    setEditName(tag.name);
+    setEditColor(tag.color);
+    setEditSync(tag.whatsapp_label_id ?? NO_SYNC);
+  }
+
+  async function handleEditSave() {
+    if (!editingTag || !accountId || !user) return;
+    if (!editName.trim()) {
+      toast.error(t('nameRequired'));
+      return;
+    }
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('tags')
+        .update({
+          name: editName.trim(),
+          color: editColor,
+          whatsapp_label_id: editSync === NO_SYNC ? null : editSync,
+        })
+        .eq('id', editingTag.id);
+
+      if (error) throw error;
+
+      toast.success(t('tagUpdated'));
+      setEditingTag(null);
+      await fetchTags(accountId, user.id);
+    } catch (err) {
+      console.error('Update error:', err);
+      toast.error(t('failedToUpdateTag'));
     } finally {
       setSaving(false);
     }
@@ -185,7 +299,19 @@ export function TagManager() {
                       className="size-2 rounded-full"
                       style={{ backgroundColor: tag.color }}
                     />
-                    {tag.name}
+                    <button
+                      type="button"
+                      onClick={() => openEdit(tag)}
+                      className="cursor-pointer"
+                      title={
+                        tag.whatsapp_label_id
+                          ? t('syncedBadge')
+                          : undefined
+                      }
+                    >
+                      {tag.name}
+                      {tag.whatsapp_label_id ? ' 🔗' : ''}
+                    </button>
                     <button
                       type="button"
                       onClick={() => confirmDelete(tag)}
@@ -204,53 +330,112 @@ export function TagManager() {
             )}
 
             {/* Inline create row */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <Input
-                placeholder={t('placeholder')}
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreate();
-                }}
-                disabled={saving}
-                maxLength={40}
-                className="min-w-[180px] flex-1"
-              />
-              <div className="flex gap-1.5">
-                {PRESET_COLORS.map((color) => (
-                  <button
-                    key={color.value}
-                    type="button"
-                    onClick={() => setSelectedColor(color.value)}
-                    aria-label={t('useColor', { color: t(`colors.${color.name}` as Parameters<typeof t>[0]) })}
-                    aria-pressed={selectedColor === color.value}
-                    className={cn(
-                      'size-6 rounded-md transition-transform hover:scale-110',
-                      selectedColor === color.value &&
-                        'outline outline-2 outline-offset-2 outline-primary',
-                    )}
-                    style={{ backgroundColor: color.value }}
-                    title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
-                  />
-                ))}
+            <div className="space-y-3 rounded-lg border border-border/60 p-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Input
+                  placeholder={t('placeholder')}
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreate();
+                  }}
+                  disabled={saving}
+                  maxLength={40}
+                  className="min-w-[180px] flex-1"
+                />
+                <div className="flex gap-1.5">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setSelectedColor(color.value)}
+                      aria-label={t('useColor', { color: t(`colors.${color.name}` as Parameters<typeof t>[0]) })}
+                      aria-pressed={selectedColor === color.value}
+                      className={cn(
+                        'size-6 rounded-md transition-transform hover:scale-110',
+                        selectedColor === color.value &&
+                          'outline outline-2 outline-offset-2 outline-primary',
+                      )}
+                      style={{ backgroundColor: color.value }}
+                      title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
+                    />
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreate}
+                  disabled={saving || !newTagName.trim()}
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                  {t('addTag')}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCreate}
-                disabled={saving || !newTagName.trim()}
-              >
-                {saving ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Plus className="size-4" />
-                )}
-                {t('addTag')}
-              </Button>
+              <WhatsappLabelSelect
+                labels={whatsappLabels}
+                value={newTagSync}
+                onChange={setNewTagSync}
+                t={t}
+              />
             </div>
           </>
         )}
       </CardContent>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editingTag} onOpenChange={(open) => !open && setEditingTag(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('editTag')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">{t('placeholder')}</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                maxLength={40}
+              />
+            </div>
+            <div className="flex gap-1.5">
+              {PRESET_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  onClick={() => setEditColor(color.value)}
+                  aria-pressed={editColor === color.value}
+                  className={cn(
+                    'size-6 rounded-md transition-transform hover:scale-110',
+                    editColor === color.value &&
+                      'outline outline-2 outline-offset-2 outline-primary',
+                  )}
+                  style={{ backgroundColor: color.value }}
+                  title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
+                />
+              ))}
+            </div>
+            <WhatsappLabelSelect
+              labels={whatsappLabels}
+              value={editSync}
+              onChange={setEditSync}
+              t={t}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditingTag(null)} disabled={saving}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleEditSave} disabled={saving || !editName.trim()}>
+              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {t('save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

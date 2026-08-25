@@ -138,8 +138,13 @@ export interface Contact {
 export interface Tag {
   id: string;
   user_id: string;
+  account_id?: string;
   name: string;
   color: string;
+  /** Optional: the real WhatsApp Business label this tag mirrors
+   *  (migration 072) — applying the tag also pushes this label onto
+   *  the contact's WhatsApp chat. Null/absent means CRM-only. */
+  whatsapp_label_id?: string | null;
   created_at: string;
 }
 

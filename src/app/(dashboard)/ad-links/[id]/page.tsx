@@ -5,12 +5,24 @@ import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Copy, Loader2, Save, Trash2 } from 'lucide-react';
 
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { Tag } from '@/types';
+
+const NO_TAG = '__none__';
 
 interface AdCampaign {
   id: string;
@@ -18,6 +30,7 @@ interface AdCampaign {
   code: string;
   message_template: string;
   active: boolean;
+  tag_id: string | null;
   click_count?: number;
   conversation_count?: number;
   won_count?: number;
@@ -41,11 +54,15 @@ function previewSlug(input: string): string {
 export default function AdCampaignDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const supabase = createClient();
+  const { accountId } = useAuth();
   const [campaign, setCampaign] = useState<AdCampaign | null>(null);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [template, setTemplate] = useState('');
   const [active, setActive] = useState(true);
+  const [tagId, setTagId] = useState(NO_TAG);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -67,6 +84,7 @@ export default function AdCampaignDetailPage() {
           setCode(found.code);
           setTemplate(found.message_template);
           setActive(found.active);
+          setTagId(found.tag_id ?? NO_TAG);
         }
       } catch (err) {
         if (!cancelled) toast.error(err instanceof Error ? err.message : 'Falha ao carregar campanha');
@@ -79,6 +97,17 @@ export default function AdCampaignDetailPage() {
       cancelled = true;
     };
   }, [params.id]);
+
+  useEffect(() => {
+    if (!accountId) return;
+    supabase
+      .from('tags')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('name')
+      .then(({ data }) => setTags(data ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   async function handleSave() {
     if (!name.trim()) {
@@ -98,7 +127,13 @@ export default function AdCampaignDetailPage() {
       const res = await fetch(`/api/ad-campaigns/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, code, message_template: template, active }),
+        body: JSON.stringify({
+          name,
+          code,
+          message_template: template,
+          active,
+          tag_id: tagId === NO_TAG ? null : tagId,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Falha ao salvar');
@@ -231,6 +266,28 @@ export default function AdCampaignDetailPage() {
               value={template}
               onChange={(e) => setTemplate(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tag">Etiqueta a aplicar no lead</Label>
+            <Select value={tagId} onValueChange={(v) => setTagId(v ?? NO_TAG)}>
+              <SelectTrigger id="tag" className="w-full">
+                <SelectValue placeholder="Nenhuma" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TAG}>Nenhuma</SelectItem>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.id} value={tag.id}>
+                    {tag.name}
+                    {tag.whatsapp_label_id ? ' 🔗' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Aplicada automaticamente no contato quando ele chegar por essa campanha. 🔗 = também
+              sincroniza com uma etiqueta do WhatsApp.
+            </p>
           </div>
 
           <div className="flex items-center justify-between">

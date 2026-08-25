@@ -17,11 +17,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { name, message_template, active, code } = body as {
+    const { name, message_template, active, code, tag_id } = body as {
       name?: string;
       message_template?: string;
       active?: boolean;
       code?: string;
+      tag_id?: string | null;
     };
 
     const patch: Record<string, unknown> = {};
@@ -50,6 +51,20 @@ export async function PATCH(
         );
       }
       patch.code = sanitized;
+    }
+    if (tag_id !== undefined) {
+      if (tag_id) {
+        const { data: tag } = await supabase
+          .from('tags')
+          .select('id')
+          .eq('id', tag_id)
+          .eq('account_id', accountId)
+          .maybeSingle();
+        if (!tag) {
+          return NextResponse.json({ error: 'Tag not found in this account' }, { status: 404 });
+        }
+      }
+      patch.tag_id = tag_id || null;
     }
 
     if (Object.keys(patch).length === 0) {
