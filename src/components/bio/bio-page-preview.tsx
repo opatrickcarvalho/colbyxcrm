@@ -12,8 +12,16 @@
 // buttonColor/textColor are set PER BUTTON (bio_page_links), not for
 // the page — the profile header (avatar/name/bio) is a separate
 // scheme with a fixed color, deliberately not part of this theming.
+//
+// `nsfw` is also per-button — clicking one (only when `hrefFor` makes
+// this the real public page, not the dashboard's non-interactive
+// preview) is intercepted client-side and swaps in a darkened
+// full-screen 18+ confirmation before the real navigation happens.
 // ============================================================
 
+'use client';
+
+import { useState } from 'react';
 import { Link as LinkIcon, MessageCircle } from 'lucide-react';
 
 import { resolveEmbedUrl } from '@/lib/bio/embed';
@@ -29,6 +37,20 @@ export interface BioPagePreviewLink {
   icon?: string | null;
   buttonColor?: string;
   textColor?: string;
+  nsfw?: boolean;
+}
+
+/** Small "+18" badge shown on a button flagged as sensitive content. */
+function Nsfw18Badge() {
+  return (
+    <span
+      className="inline-flex h-4 shrink-0 items-center justify-center rounded bg-red-600 px-1 text-[10px] leading-none font-bold text-white"
+      aria-hidden
+      title="Conteúdo sensível — +18"
+    >
+      +18
+    </span>
+  );
 }
 
 export interface BioPagePreviewProps {
@@ -49,6 +71,11 @@ export function BioPagePreview({
   hrefFor,
   className,
 }: BioPagePreviewProps) {
+  // Set only on the real public page (hrefFor present) when a visitor
+  // clicks an nsfw button — holds the click until they confirm, then
+  // navigation resumes to this same href.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
   return (
     <div
       className={`flex flex-col items-center gap-6 bg-neutral-950 px-6 py-10 text-neutral-100 ${className ?? ''}`}
@@ -117,14 +144,21 @@ export function BioPagePreview({
               href={hrefFor(link)}
               className={buttonClass}
               style={buttonStyle}
+              onClick={(e) => {
+                if (!link.nsfw) return;
+                e.preventDefault();
+                setPendingHref(hrefFor(link));
+              }}
             >
               {badge}
               {link.label}
+              {link.nsfw && <Nsfw18Badge />}
             </a>
           ) : (
             <div key={link.id} className={buttonClass} style={buttonStyle}>
               {badge}
               {link.label}
+              {link.nsfw && <Nsfw18Badge />}
             </div>
           );
         })}
@@ -134,6 +168,36 @@ export function BioPagePreview({
           </p>
         )}
       </div>
+
+      {pendingHref && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black/90 px-6 text-center backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <span className="flex size-12 items-center justify-center rounded-full bg-red-600 text-base font-bold text-white">
+            +18
+          </span>
+          <p className="max-w-xs text-base font-medium text-neutral-100">
+            Este conteúdo é para maiores de 18 anos. Você tem 18 anos ou mais?
+          </p>
+          <div className="flex w-full max-w-xs flex-col gap-3">
+            <a
+              href={pendingHref}
+              className="rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-[filter] hover:brightness-90"
+            >
+              Sim, tenho 18 anos ou mais
+            </a>
+            <button
+              type="button"
+              onClick={() => setPendingHref(null)}
+              className="rounded-xl border border-neutral-700 px-4 py-3 text-sm font-medium text-neutral-300 transition-colors hover:bg-neutral-900"
+            >
+              Não, sair
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

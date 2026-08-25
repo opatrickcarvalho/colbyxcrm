@@ -26,6 +26,7 @@ export async function PATCH(
       type,
       button_color,
       text_color,
+      nsfw,
     } = body as {
       label?: string;
       url?: string | null;
@@ -35,6 +36,7 @@ export async function PATCH(
       type?: string;
       button_color?: string;
       text_color?: string;
+      nsfw?: boolean;
     };
 
     const patch: Record<string, unknown> = {};
@@ -49,6 +51,7 @@ export async function PATCH(
     }
     if (icon !== undefined) patch.icon = icon?.trim() || null;
     if (active !== undefined) patch.active = Boolean(active);
+    if (nsfw !== undefined) patch.nsfw = Boolean(nsfw);
     if (button_color !== undefined) {
       if (!isHexColor(button_color)) {
         return NextResponse.json(

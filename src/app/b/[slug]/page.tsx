@@ -44,7 +44,7 @@ async function loadPage(slug: string) {
 
   const { data: links } = await db
     .from('bio_page_links')
-    .select('id, type, label, url, icon, button_color, text_color')
+    .select('id, type, label, url, icon, button_color, text_color, nsfw')
     .eq('bio_page_id', page.id)
     .eq('active', true)
     .order('position', { ascending: true });
@@ -57,6 +57,7 @@ async function loadPage(slug: string) {
     icon: l.icon,
     buttonColor: l.button_color,
     textColor: l.text_color,
+    nsfw: l.nsfw,
   }));
 
   return { page, links: previewLinks };

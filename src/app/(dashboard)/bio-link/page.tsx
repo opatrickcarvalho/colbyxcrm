@@ -103,6 +103,7 @@ interface BioPageLink {
   click_count: number;
   button_color: string;
   text_color: string;
+  nsfw: boolean;
 }
 
 interface AdCampaign {
@@ -151,6 +152,7 @@ export default function BioLinkPage() {
   const [linkIcon, setLinkIcon] = useState('');
   const [linkButtonColor, setLinkButtonColor] = useState(DEFAULT_BUTTON_COLOR);
   const [linkTextColor, setLinkTextColor] = useState(DEFAULT_TEXT_COLOR);
+  const [linkNsfw, setLinkNsfw] = useState(false);
   const [savingLink, setSavingLink] = useState(false);
 
   async function loadAll() {
@@ -305,6 +307,7 @@ export default function BioLinkPage() {
     setLinkIcon('');
     setLinkButtonColor(DEFAULT_BUTTON_COLOR);
     setLinkTextColor(DEFAULT_TEXT_COLOR);
+    setLinkNsfw(false);
     setDialogOpen(true);
   }
 
@@ -317,6 +320,7 @@ export default function BioLinkPage() {
     setLinkIcon(link.icon ?? '');
     setLinkButtonColor(link.button_color);
     setLinkTextColor(link.text_color);
+    setLinkNsfw(link.nsfw);
     setDialogOpen(true);
   }
 
@@ -343,6 +347,7 @@ export default function BioLinkPage() {
         icon: linkIcon || undefined,
         button_color: linkButtonColor,
         text_color: linkTextColor,
+        nsfw: linkNsfw,
       };
       const res = await fetch(
         editingLink
@@ -509,6 +514,7 @@ export default function BioLinkPage() {
       ...l,
       buttonColor: l.button_color,
       textColor: l.text_color,
+      nsfw: l.nsfw,
     }));
 
   return (
@@ -790,6 +796,24 @@ export default function BioLinkPage() {
                 onChange={setLinkTextColor}
               />
             </div>
+
+            <div className="border-border flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="link-nsfw">
+                  Aviso de conteúdo sensível (+18)
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  Ao clicar, a tela escurece e pede confirmação de idade antes
+                  de abrir este botão. O botão exibe o selo{' '}
+                  <span className="font-semibold">+18</span>.
+                </p>
+              </div>
+              <Switch
+                id="link-nsfw"
+                checked={linkNsfw}
+                onCheckedChange={setLinkNsfw}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -922,8 +946,16 @@ function SortableLinkRow({
         onClick={onEdit}
         className="min-w-0 flex-1 text-left"
       >
-        <p className="text-foreground truncate text-sm font-medium">
+        <p className="text-foreground flex items-center gap-1.5 truncate text-sm font-medium">
           {link.label}
+          {link.nsfw && (
+            <span
+              className="inline-flex h-4 shrink-0 items-center justify-center rounded bg-red-600 px-1 text-[10px] leading-none font-bold text-white"
+              title="Aviso de conteúdo sensível ativado"
+            >
+              +18
+            </span>
+          )}
         </p>
         <p className="text-muted-foreground truncate text-xs">
           {BIO_LINK_TYPE_LABELS[link.type]} · {subtitle} · {link.click_count}{' '}

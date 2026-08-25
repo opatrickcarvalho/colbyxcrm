@@ -73,16 +73,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { type, label, url, ad_campaign_id, icon, button_color, text_color } =
-      body as {
-        type?: string;
-        label?: string;
-        url?: string;
-        ad_campaign_id?: string;
-        icon?: string;
-        button_color?: string;
-        text_color?: string;
-      };
+    const {
+      type,
+      label,
+      url,
+      ad_campaign_id,
+      icon,
+      button_color,
+      text_color,
+      nsfw,
+    } = body as {
+      type?: string;
+      label?: string;
+      url?: string;
+      ad_campaign_id?: string;
+      icon?: string;
+      button_color?: string;
+      text_color?: string;
+      nsfw?: boolean;
+    };
 
     if (!isBioLinkType(type)) {
       return NextResponse.json({ error: 'Invalid link type' }, { status: 400 });
@@ -111,6 +120,7 @@ export async function POST(request: Request) {
       icon: icon?.trim() || null,
       ...(button_color !== undefined ? { button_color } : {}),
       ...(text_color !== undefined ? { text_color } : {}),
+      ...(nsfw !== undefined ? { nsfw: Boolean(nsfw) } : {}),
     };
 
     if (type === ('whatsapp' as BioLinkType)) {
