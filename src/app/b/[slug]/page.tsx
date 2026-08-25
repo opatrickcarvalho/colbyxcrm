@@ -36,9 +36,7 @@ async function loadPage(slug: string) {
   const db = supabaseAdmin();
   const { data: page } = await db
     .from('bio_pages')
-    .select(
-      'id, display_name, bio, avatar_url, active, button_color, text_color'
-    )
+    .select('id, display_name, bio, avatar_url, active')
     .eq('slug_key', slug.toLowerCase())
     .maybeSingle();
 
@@ -46,12 +44,22 @@ async function loadPage(slug: string) {
 
   const { data: links } = await db
     .from('bio_page_links')
-    .select('id, type, label, url, icon')
+    .select('id, type, label, url, icon, button_color, text_color')
     .eq('bio_page_id', page.id)
     .eq('active', true)
     .order('position', { ascending: true });
 
-  return { page, links: (links ?? []) as BioPagePreviewLink[] };
+  const previewLinks: BioPagePreviewLink[] = (links ?? []).map((l) => ({
+    id: l.id,
+    type: l.type,
+    label: l.label,
+    url: l.url,
+    icon: l.icon,
+    buttonColor: l.button_color,
+    textColor: l.text_color,
+  }));
+
+  return { page, links: previewLinks };
 }
 
 export async function generateMetadata({
@@ -123,8 +131,6 @@ export default async function BioPage({
         bio={page.bio}
         avatarUrl={page.avatar_url}
         links={links}
-        buttonColor={page.button_color}
-        textColor={page.text_color}
         hrefFor={(link) => `/b/${slug}/go/${link.id}${utmSuffix}`}
         className="min-h-screen"
       />

@@ -6,7 +6,6 @@ import {
   generateCampaignCode,
   slugifyCampaignCode,
 } from '@/lib/attribution/code';
-import { isHexColor } from '@/lib/bio/theme';
 
 // Dashboard CRUD for the account's single bio_pages row (see
 // 071_bio_pages.sql). One page per account — no list endpoint needed.
@@ -148,22 +147,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const {
-      display_name,
-      bio,
-      avatar_url,
-      active,
-      slug,
-      button_color,
-      text_color,
-    } = body as {
+    const { display_name, bio, avatar_url, active, slug } = body as {
       display_name?: string;
       bio?: string | null;
       avatar_url?: string | null;
       active?: boolean;
       slug?: string;
-      button_color?: string;
-      text_color?: string;
     };
 
     const patch: Record<string, unknown> = {};
@@ -179,24 +168,6 @@ export async function PATCH(request: Request) {
     if (bio !== undefined) patch.bio = bio;
     if (avatar_url !== undefined) patch.avatar_url = avatar_url;
     if (active !== undefined) patch.active = Boolean(active);
-    if (button_color !== undefined) {
-      if (!isHexColor(button_color)) {
-        return NextResponse.json(
-          { error: 'button_color must be a #rrggbb hex color' },
-          { status: 400 }
-        );
-      }
-      patch.button_color = button_color;
-    }
-    if (text_color !== undefined) {
-      if (!isHexColor(text_color)) {
-        return NextResponse.json(
-          { error: 'text_color must be a #rrggbb hex color' },
-          { status: 400 }
-        );
-      }
-      patch.text_color = text_color;
-    }
     if (slug !== undefined) {
       const sanitized = slugifyCampaignCode(slug);
       if (!sanitized) {

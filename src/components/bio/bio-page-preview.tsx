@@ -9,11 +9,9 @@
 // a bare icon read as "not a button" in practice); `embed` renders
 // inline instead when its URL resolves to a known platform.
 //
-// buttonColor/textColor are the two theme knobs the editor exposes —
-// applied as inline styles (not classes) so an arbitrary hex value
-// works without a Tailwind safelist entry. textColor is set once on
-// the root and inherited everywhere (button labels included); only
-// each button's own background needs its own inline style.
+// buttonColor/textColor are set PER BUTTON (bio_page_links), not for
+// the page — the profile header (avatar/name/bio) is a separate
+// scheme with a fixed color, deliberately not part of this theming.
 // ============================================================
 
 import { Link as LinkIcon, MessageCircle } from 'lucide-react';
@@ -29,6 +27,8 @@ export interface BioPagePreviewLink {
   label: string;
   url?: string | null;
   icon?: string | null;
+  buttonColor?: string;
+  textColor?: string;
 }
 
 export interface BioPagePreviewProps {
@@ -36,8 +36,6 @@ export interface BioPagePreviewProps {
   bio?: string | null;
   avatarUrl?: string | null;
   links: BioPagePreviewLink[];
-  buttonColor?: string;
-  textColor?: string;
   /** Real destination href for a link click. Omitted -> non-interactive preview (dashboard). */
   hrefFor?: (link: BioPagePreviewLink) => string;
   className?: string;
@@ -48,18 +46,12 @@ export function BioPagePreview({
   bio,
   avatarUrl,
   links,
-  buttonColor = DEFAULT_BUTTON_COLOR,
-  textColor = DEFAULT_TEXT_COLOR,
   hrefFor,
   className,
 }: BioPagePreviewProps) {
-  const buttonClass =
-    'flex items-center justify-center gap-2 rounded-xl border border-neutral-800 px-4 py-3.5 text-sm font-medium transition-[filter] hover:brightness-90';
-
   return (
     <div
-      className={`flex flex-col items-center gap-6 bg-neutral-950 px-6 py-10 ${className ?? ''}`}
-      style={{ color: textColor }}
+      className={`flex flex-col items-center gap-6 bg-neutral-950 px-6 py-10 text-neutral-100 ${className ?? ''}`}
     >
       <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
         {avatarUrl ? (
@@ -75,7 +67,7 @@ export function BioPagePreview({
           </div>
         )}
         <h1 className="text-lg font-semibold">{displayName || 'Sua página'}</h1>
-        {bio && <p className="text-sm opacity-80">{bio}</p>}
+        {bio && <p className="text-sm text-neutral-400">{bio}</p>}
       </div>
 
       <div className="flex w-full max-w-md flex-col gap-3">
@@ -112,29 +104,32 @@ export function BioPagePreview({
               <LinkIcon className="size-4 shrink-0 opacity-60" />
             );
 
+          const buttonClass =
+            'flex items-center justify-center gap-2 rounded-xl border border-neutral-800 px-4 py-3.5 text-sm font-medium transition-[filter] hover:brightness-90';
+          const buttonStyle = {
+            backgroundColor: link.buttonColor ?? DEFAULT_BUTTON_COLOR,
+            color: link.textColor ?? DEFAULT_TEXT_COLOR,
+          };
+
           return hrefFor ? (
             <a
               key={link.id}
               href={hrefFor(link)}
               className={buttonClass}
-              style={{ backgroundColor: buttonColor }}
+              style={buttonStyle}
             >
               {badge}
               {link.label}
             </a>
           ) : (
-            <div
-              key={link.id}
-              className={buttonClass}
-              style={{ backgroundColor: buttonColor }}
-            >
+            <div key={link.id} className={buttonClass} style={buttonStyle}>
               {badge}
               {link.label}
             </div>
           );
         })}
         {links.length === 0 && (
-          <p className="py-6 text-center text-sm opacity-60">
+          <p className="py-6 text-center text-sm text-neutral-500">
             Nenhum botão ainda.
           </p>
         )}

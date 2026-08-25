@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { isBioLinkType, type BioLinkType } from '@/lib/bio/link-types';
+import { isHexColor } from '@/lib/bio/theme';
 
 export async function PATCH(
   request: Request,
@@ -16,24 +17,56 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { label, url, ad_campaign_id, icon, active, type } = body as {
+    const {
+      label,
+      url,
+      ad_campaign_id,
+      icon,
+      active,
+      type,
+      button_color,
+      text_color,
+    } = body as {
       label?: string;
       url?: string | null;
       ad_campaign_id?: string | null;
       icon?: string | null;
       active?: boolean;
       type?: string;
+      button_color?: string;
+      text_color?: string;
     };
 
     const patch: Record<string, unknown> = {};
     if (label !== undefined) {
       if (!label.trim()) {
-        return NextResponse.json({ error: 'label cannot be empty' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'label cannot be empty' },
+          { status: 400 }
+        );
       }
       patch.label = label.trim();
     }
     if (icon !== undefined) patch.icon = icon?.trim() || null;
     if (active !== undefined) patch.active = Boolean(active);
+    if (button_color !== undefined) {
+      if (!isHexColor(button_color)) {
+        return NextResponse.json(
+          { error: 'button_color must be a #rrggbb hex color' },
+          { status: 400 }
+        );
+      }
+      patch.button_color = button_color;
+    }
+    if (text_color !== undefined) {
+      if (!isHexColor(text_color)) {
+        return NextResponse.json(
+          { error: 'text_color must be a #rrggbb hex color' },
+          { status: 400 }
+        );
+      }
+      patch.text_color = text_color;
+    }
 
     // type/url/ad_campaign_id are changed together — the CHECK
     // constraint (bio_page_links_type_shape) requires a consistent
@@ -42,7 +75,10 @@ export async function PATCH(
     // opaque error.
     if (type !== undefined) {
       if (!isBioLinkType(type)) {
-        return NextResponse.json({ error: 'Invalid link type' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'Invalid link type' },
+          { status: 400 }
+        );
       }
       patch.type = type;
       if (type === ('whatsapp' as BioLinkType)) {
@@ -59,7 +95,10 @@ export async function PATCH(
           .eq('account_id', accountId)
           .maybeSingle();
         if (!campaign) {
-          return NextResponse.json({ error: 'ad_campaign not found' }, { status: 400 });
+          return NextResponse.json(
+            { error: 'ad_campaign not found' },
+            { status: 400 }
+          );
         }
         patch.ad_campaign_id = ad_campaign_id;
         patch.url = null;
@@ -116,7 +155,10 @@ export async function DELETE(
 
     if (error) {
       console.error('[DELETE /api/bio-page/links/[id]] error:', error);
-      return NextResponse.json({ error: 'Failed to delete link' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to delete link' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { isBioLinkType, type BioLinkType } from '@/lib/bio/link-types';
+import { isHexColor } from '@/lib/bio/theme';
 
 // CRUD for bio_page_links, scoped to the caller's single bio_pages row
 // (see 071_bio_pages.sql). Mirrors /api/ad-campaigns's shape.
@@ -27,7 +28,10 @@ export async function GET() {
 
     if (error) {
       console.error('[GET /api/bio-page/links] error:', error);
-      return NextResponse.json({ error: 'Failed to load links' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to load links' },
+        { status: 500 }
+      );
     }
 
     // Small per-page list — one lightweight count query per link,
@@ -69,25 +73,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const {
-      type,
-      label,
-      url,
-      ad_campaign_id,
-      icon,
-    } = body as {
-      type?: string;
-      label?: string;
-      url?: string;
-      ad_campaign_id?: string;
-      icon?: string;
-    };
+    const { type, label, url, ad_campaign_id, icon, button_color, text_color } =
+      body as {
+        type?: string;
+        label?: string;
+        url?: string;
+        ad_campaign_id?: string;
+        icon?: string;
+        button_color?: string;
+        text_color?: string;
+      };
 
     if (!isBioLinkType(type)) {
       return NextResponse.json({ error: 'Invalid link type' }, { status: 400 });
     }
     if (!label || !label.trim()) {
       return NextResponse.json({ error: 'label is required' }, { status: 400 });
+    }
+    if (button_color !== undefined && !isHexColor(button_color)) {
+      return NextResponse.json(
+        { error: 'button_color must be a #rrggbb hex color' },
+        { status: 400 }
+      );
+    }
+    if (text_color !== undefined && !isHexColor(text_color)) {
+      return NextResponse.json(
+        { error: 'text_color must be a #rrggbb hex color' },
+        { status: 400 }
+      );
     }
 
     const insert: Record<string, unknown> = {
@@ -96,6 +109,8 @@ export async function POST(request: Request) {
       type,
       label: label.trim(),
       icon: icon?.trim() || null,
+      ...(button_color !== undefined ? { button_color } : {}),
+      ...(text_color !== undefined ? { text_color } : {}),
     };
 
     if (type === ('whatsapp' as BioLinkType)) {
@@ -115,13 +130,19 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .maybeSingle();
       if (!campaign) {
-        return NextResponse.json({ error: 'ad_campaign not found' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'ad_campaign not found' },
+          { status: 400 }
+        );
       }
       insert.ad_campaign_id = ad_campaign_id;
       insert.url = null;
     } else {
       if (!url || !url.trim()) {
-        return NextResponse.json({ error: 'url is required for this link type' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'url is required for this link type' },
+          { status: 400 }
+        );
       }
       insert.url = url.trim();
       insert.ad_campaign_id = null;
@@ -141,10 +162,16 @@ export async function POST(request: Request) {
 
     if (error || !link) {
       console.error('[POST /api/bio-page/links] insert error:', error);
-      return NextResponse.json({ error: 'Failed to create link' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to create link' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ data: { ...link, click_count: 0 } }, { status: 201 });
+    return NextResponse.json(
+      { data: { ...link, click_count: 0 } },
+      { status: 201 }
+    );
   } catch (error) {
     return toErrorResponse(error);
   }

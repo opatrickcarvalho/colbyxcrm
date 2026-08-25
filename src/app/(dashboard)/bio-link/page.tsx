@@ -90,8 +90,6 @@ interface BioPage {
   avatar_url: string | null;
   active: boolean;
   view_count: number;
-  button_color: string;
-  text_color: string;
 }
 
 interface BioPageLink {
@@ -103,6 +101,8 @@ interface BioPageLink {
   icon: string | null;
   active: boolean;
   click_count: number;
+  button_color: string;
+  text_color: string;
 }
 
 interface AdCampaign {
@@ -137,8 +137,6 @@ export default function BioLinkPage() {
   const [slug, setSlug] = useState('');
   const [bio, setBio] = useState('');
   const [active, setActive] = useState(true);
-  const [buttonColor, setButtonColor] = useState(DEFAULT_BUTTON_COLOR);
-  const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -151,6 +149,8 @@ export default function BioLinkPage() {
   const [linkUrl, setLinkUrl] = useState('');
   const [linkCampaignId, setLinkCampaignId] = useState('');
   const [linkIcon, setLinkIcon] = useState('');
+  const [linkButtonColor, setLinkButtonColor] = useState(DEFAULT_BUTTON_COLOR);
+  const [linkTextColor, setLinkTextColor] = useState(DEFAULT_TEXT_COLOR);
   const [savingLink, setSavingLink] = useState(false);
 
   async function loadAll() {
@@ -176,8 +176,6 @@ export default function BioLinkPage() {
         setSlug(pageData.data.slug);
         setBio(pageData.data.bio ?? '');
         setActive(pageData.data.active);
-        setButtonColor(pageData.data.button_color ?? DEFAULT_BUTTON_COLOR);
-        setTextColor(pageData.data.text_color ?? DEFAULT_TEXT_COLOR);
       }
     } catch (err) {
       toast.error(
@@ -265,8 +263,6 @@ export default function BioLinkPage() {
           bio: bio.trim() || null,
           avatar_url: avatarUrl,
           active,
-          button_color: buttonColor,
-          text_color: textColor,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -307,6 +303,8 @@ export default function BioLinkPage() {
     setLinkUrl('');
     setLinkCampaignId('');
     setLinkIcon('');
+    setLinkButtonColor(DEFAULT_BUTTON_COLOR);
+    setLinkTextColor(DEFAULT_TEXT_COLOR);
     setDialogOpen(true);
   }
 
@@ -317,6 +315,8 @@ export default function BioLinkPage() {
     setLinkUrl(link.url ?? '');
     setLinkCampaignId(link.ad_campaign_id ?? '');
     setLinkIcon(link.icon ?? '');
+    setLinkButtonColor(link.button_color);
+    setLinkTextColor(link.text_color);
     setDialogOpen(true);
   }
 
@@ -341,6 +341,8 @@ export default function BioLinkPage() {
         url: linkType === 'whatsapp' ? undefined : linkUrl,
         ad_campaign_id: linkType === 'whatsapp' ? linkCampaignId : undefined,
         icon: linkIcon || undefined,
+        button_color: linkButtonColor,
+        text_color: linkTextColor,
       };
       const res = await fetch(
         editingLink
@@ -499,9 +501,15 @@ export default function BioLinkPage() {
   const publicUrl = `${origin}/b/${slug}`;
   const currentAvatar = previewUrl ?? page.avatar_url;
   // Mirrors what the public page actually renders (it only ever
-  // selects active links) so the preview doesn't show a button a
-  // visitor wouldn't see.
-  const previewLinks = links.filter((l) => l.active);
+  // selects active links, and each button carries its own color) so
+  // the preview doesn't show a button a visitor wouldn't see.
+  const previewLinks = links
+    .filter((l) => l.active)
+    .map((l) => ({
+      ...l,
+      buttonColor: l.button_color,
+      textColor: l.text_color,
+    }));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -590,21 +598,6 @@ export default function BioLinkPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <ColorField
-                  id="button-color"
-                  label="Cor dos botões"
-                  value={buttonColor}
-                  onChange={setButtonColor}
-                />
-                <ColorField
-                  id="text-color"
-                  label="Cor da fonte"
-                  value={textColor}
-                  onChange={setTextColor}
-                />
-              </div>
-
               <div className="flex items-center justify-between">
                 <Label htmlFor="page-active">Página ativa</Label>
                 <Switch
@@ -685,8 +678,6 @@ export default function BioLinkPage() {
               bio={bio}
               avatarUrl={currentAvatar}
               links={previewLinks}
-              buttonColor={buttonColor}
-              textColor={textColor}
             />
           </div>
         </div>
@@ -784,6 +775,21 @@ export default function BioLinkPage() {
                 </Select>
               </div>
             )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <ColorField
+                id="link-button-color"
+                label="Cor do botão"
+                value={linkButtonColor}
+                onChange={setLinkButtonColor}
+              />
+              <ColorField
+                id="link-text-color"
+                label="Cor do texto"
+                value={linkTextColor}
+                onChange={setLinkTextColor}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -905,6 +911,12 @@ function SortableLinkRow({
       >
         <GripVertical className="h-4 w-4" />
       </button>
+      <span
+        className="border-border size-4 shrink-0 rounded-full border"
+        style={{ backgroundColor: link.button_color }}
+        aria-hidden
+        title="Cor do botão"
+      />
       <button
         type="button"
         onClick={onEdit}
