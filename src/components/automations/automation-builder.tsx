@@ -263,8 +263,14 @@ interface AutomationResources {
   customFields: CustomField[];
   pipelines: PipelineOption[];
   stages: PipelineStageOption[];
+  groups: GroupRecord[];
   /** Whether the account's connected WhatsApp provider supports templates (Meta: yes, UAZAPI: no). */
   templatesEnabled: boolean;
+}
+
+interface GroupRecord {
+  group_jid: string;
+  name: string;
 }
 
 interface PipelineOption {
@@ -286,6 +292,7 @@ const ResourcesContext = createContext<AutomationResources>({
   customFields: [],
   pipelines: [],
   stages: [],
+  groups: [],
   templatesEnabled: true,
 });
 
@@ -300,6 +307,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
   const [stages, setStages] = useState<PipelineStageOption[]>([]);
+  const [groups, setGroups] = useState<GroupRecord[]>([]);
   const [templatesEnabled, setTemplatesEnabled] = useState(true);
 
   useEffect(() => {
@@ -329,6 +337,13 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
           isProviderId(config?.provider) ? config.provider : 'meta'
         ).templates
       );
+      const { data: groupRows } = await supabase
+        .from('whatsapp_groups')
+        .select('group_jid, name')
+        .eq('account_id', accountId)
+        .eq('status', 'active')
+        .order('name');
+      if (!cancelled) setGroups((groupRows as GroupRecord[] | null) ?? []);
     })();
 
     // Tags, templates and custom fields come straight from the DB — RLS
@@ -387,6 +402,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
         customFields,
         pipelines,
         stages,
+        groups,
         templatesEnabled,
       }}
     >
@@ -446,6 +462,50 @@ function TagSelect({
         )}
       </select>
     </div>
+  );
+}
+
+/** WhatsApp group dropdown by name, storing the group's jid. Falls back to a
+ *  raw jid input when the account has no groups tracked yet. */
+function GroupSelect({
+  value,
+  onChange,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { groups } = useResources();
+  if (groups.length === 0) {
+    return (
+      <Input
+        placeholder={t('groups.placeholder')}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-muted text-foreground"
+      />
+    );
+  }
+  const selected = groups.find((g) => g.group_jid === value);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={SELECT_CLASS}
+    >
+      <option value="">{t('groups.select')}</option>
+      {groups.map((g) => (
+        <option key={g.group_jid} value={g.group_jid}>
+          {g.name}
+        </option>
+      ))}
+      {/* Preserve a saved group that's since been deleted/archived so editing
+          an existing automation doesn't silently drop it. */}
+      {value && !selected && (
+        <option value={value}>{t('groups.unknown', { id: value })}</option>
+      )}
+    </select>
   );
 }
 
@@ -1613,24 +1673,37 @@ function StepEditor({
               <option value="time_of_day">
                 {t('config.subjects.time_of_day')}
               </option>
+              <option value="group_membership">
+                {t('config.subjects.group_membership')}
+              </option>
             </select>
           </FieldBlock>
-          <FieldBlock label={t('config.operandLabel')}>
-            <Input
-              placeholder={
-                cfg.subject === 'time_of_day'
-                  ? t('config.placeholderTime')
-                  : cfg.subject === 'contact_field'
-                    ? t('config.placeholderContact')
-                    : cfg.subject === 'tag_presence'
-                      ? t('config.placeholderTag')
-                      : ''
-              }
-              value={(cfg.operand as string) ?? ''}
-              onChange={(e) => set({ operand: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
+          {cfg.subject === 'group_membership' ? (
+            <FieldBlock label={t('config.groupLabel')}>
+              <GroupSelect
+                value={(cfg.operand as string) ?? ''}
+                onChange={(v) => set({ operand: v })}
+                t={t}
+              />
+            </FieldBlock>
+          ) : (
+            <FieldBlock label={t('config.operandLabel')}>
+              <Input
+                placeholder={
+                  cfg.subject === 'time_of_day'
+                    ? t('config.placeholderTime')
+                    : cfg.subject === 'contact_field'
+                      ? t('config.placeholderContact')
+                      : cfg.subject === 'tag_presence'
+                        ? t('config.placeholderTag')
+                        : ''
+                }
+                value={(cfg.operand as string) ?? ''}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          )}
           {(cfg.subject === 'contact_field' ||
             cfg.subject === 'message_content') && (
             <FieldBlock label="Value">

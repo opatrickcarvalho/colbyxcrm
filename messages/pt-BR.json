@@ -1419,6 +1419,11 @@
         "placeholder": "Id da etiqueta",
         "unknown": "{id} (etiqueta desconhecida)"
       },
+      "groups": {
+        "select": "Selecione um grupo…",
+        "placeholder": "JID do grupo",
+        "unknown": "{id} (grupo desconhecido)"
+      },
       "fields": {
         "name": "Nome",
         "email": "E-mail",
@@ -1482,8 +1487,10 @@
           "tag_presence": "Presença de etiqueta",
           "contact_field": "Campo do contato",
           "message_content": "Conteúdo da mensagem",
-          "time_of_day": "Horário do dia"
+          "time_of_day": "Horário do dia",
+          "group_membership": "Membro do grupo"
         },
+        "groupLabel": "Grupo",
         "operandLabel": "Operando",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "nome / e-mail / empresa",

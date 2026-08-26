@@ -636,7 +636,7 @@ export interface WaitStepConfig {
 }
 
 export type ConditionSubject =
-  'contact_field' | 'tag_presence' | 'message_content' | 'time_of_day';
+  'contact_field' | 'tag_presence' | 'message_content' | 'time_of_day' | 'group_membership';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;

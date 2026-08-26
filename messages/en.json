@@ -1419,6 +1419,11 @@
         "placeholder": "Tag id",
         "unknown": "{id} (unknown tag)"
       },
+      "groups": {
+        "select": "Select a group…",
+        "placeholder": "Group jid",
+        "unknown": "{id} (unknown group)"
+      },
       "fields": {
         "name": "Name",
         "email": "Email",
@@ -1482,8 +1487,10 @@
           "tag_presence": "Tag presence",
           "contact_field": "Contact field",
           "message_content": "Message content",
-          "time_of_day": "Time of day"
+          "time_of_day": "Time of day",
+          "group_membership": "Group membership"
         },
+        "groupLabel": "Group",
         "operandLabel": "Operand",
         "placeholderTime": "HH:mm-HH:mm",
         "placeholderContact": "name / email / company",

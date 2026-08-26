@@ -24,6 +24,8 @@ import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { resolveGroupCredentials, getGroupInfo } from '@/lib/whatsapp/providers/uazapi-groups'
+import { phonesMatch } from '@/lib/whatsapp/phone-utils'
 
 // ------------------------------------------------------------
 // Public API
@@ -779,6 +781,29 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const f = parse(from)
       const t = parse(to)
       return f <= t ? mins >= f && mins < t : mins >= f || mins < t
+    }
+    case 'group_membership': {
+      // operand is the target group's jid. Returns true when the contact IS
+      // a member — mirrors tag_presence's "true = present" semantics, so the
+      // "no" branch is where an invite-to-group flow continues.
+      if (!args.contactId || !cfg.operand) return false
+      const { data: contact } = await db
+        .from('contacts')
+        .select('phone')
+        .eq('id', args.contactId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      if (!contact?.phone) return false
+      try {
+        const creds = await resolveGroupCredentials(db, args.automation.account_id)
+        const group = await getGroupInfo(creds.host, creds.token, cfg.operand)
+        return group.participants.some((p) => phonesMatch(p.phone, contact.phone))
+      } catch {
+        // Can't verify membership right now (Uazapi error, group gone, etc.) —
+        // assume "is a member" so we fail closed and skip the invite rather
+        // than risk sending it to someone who's actually already in.
+        return true
+      }
     }
     default:
       return false
