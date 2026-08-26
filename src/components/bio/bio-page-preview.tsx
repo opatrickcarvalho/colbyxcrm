@@ -22,7 +22,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Link as LinkIcon, MessageCircle } from 'lucide-react';
+import { Link as LinkIcon, MessageCircle, Users } from 'lucide-react';
 
 import { resolveEmbedUrl } from '@/lib/bio/embed';
 import { SocialIcon } from '@/lib/bio/social-icons';
@@ -141,6 +141,8 @@ export function BioPagePreview({
               />
             ) : link.type === 'whatsapp' ? (
               <MessageCircle className="size-4 shrink-0 opacity-60" />
+            ) : link.type === 'whatsapp_group' ? (
+              <Users className="size-4 shrink-0 opacity-60" />
             ) : (
               <LinkIcon className="size-4 shrink-0 opacity-60" />
             );

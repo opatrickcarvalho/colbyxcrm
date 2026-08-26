@@ -25,6 +25,7 @@ import {
   Save,
   Trash2,
   Upload,
+  Users,
 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
@@ -92,6 +93,14 @@ interface BioPage {
   view_count: number;
 }
 
+interface BioPoolGroup {
+  id: string;
+  name: string;
+  participant_count: number;
+  max_participants: number | null;
+  position: number;
+}
+
 interface BioPageLink {
   id: string;
   type: BioLinkType;
@@ -104,12 +113,21 @@ interface BioPageLink {
   button_color: string;
   text_color: string;
   nsfw: boolean;
+  groups?: BioPoolGroup[];
 }
 
 interface AdCampaign {
   id: string;
   name: string;
   active: boolean;
+}
+
+interface WhatsappGroupOption {
+  id: string;
+  name: string;
+  participant_count: number;
+  max_participants: number | null;
+  status: 'active' | 'archived';
 }
 
 function copy(text: string) {
@@ -126,6 +144,7 @@ export default function BioLinkPage() {
   const [page, setPage] = useState<BioPage | null>(null);
   const [links, setLinks] = useState<BioPageLink[]>([]);
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
+  const [whatsappGroups, setWhatsappGroups] = useState<WhatsappGroupOption[]>([]);
 
   // Create form (shown when no page exists yet).
   const [newDisplayName, setNewDisplayName] = useState('');
@@ -153,25 +172,33 @@ export default function BioLinkPage() {
   const [linkButtonColor, setLinkButtonColor] = useState(DEFAULT_BUTTON_COLOR);
   const [linkTextColor, setLinkTextColor] = useState(DEFAULT_TEXT_COLOR);
   const [linkNsfw, setLinkNsfw] = useState(false);
+  const [poolGroupIds, setPoolGroupIds] = useState<string[]>([]);
   const [savingLink, setSavingLink] = useState(false);
 
   async function loadAll() {
     setLoading(true);
     try {
-      const [pageRes, linksRes, campaignsRes] = await Promise.all([
+      const [pageRes, linksRes, campaignsRes, groupsRes] = await Promise.all([
         fetch('/api/bio-page', { cache: 'no-store' }),
         fetch('/api/bio-page/links', { cache: 'no-store' }),
         fetch('/api/ad-campaigns', { cache: 'no-store' }),
+        fetch('/api/whatsapp/groups', { cache: 'no-store' }),
       ]);
       const pageData = await pageRes.json().catch(() => ({}));
       const linksData = await linksRes.json().catch(() => ({}));
       const campaignsData = await campaignsRes.json().catch(() => ({}));
+      const groupsData = await groupsRes.json().catch(() => ({}));
       if (!pageRes.ok)
         throw new Error(pageData.error ?? 'Falha ao carregar página');
 
       setPage(pageData.data ?? null);
       setLinks(linksData.data ?? []);
       setCampaigns(campaignsData.data ?? []);
+      setWhatsappGroups(
+        (groupsData.data ?? []).filter(
+          (g: WhatsappGroupOption) => g.status === 'active'
+        )
+      );
 
       if (pageData.data) {
         setDisplayName(pageData.data.display_name);
@@ -308,6 +335,7 @@ export default function BioLinkPage() {
     setLinkButtonColor(DEFAULT_BUTTON_COLOR);
     setLinkTextColor(DEFAULT_TEXT_COLOR);
     setLinkNsfw(false);
+    setPoolGroupIds([]);
     setDialogOpen(true);
   }
 
@@ -321,6 +349,11 @@ export default function BioLinkPage() {
     setLinkButtonColor(link.button_color);
     setLinkTextColor(link.text_color);
     setLinkNsfw(link.nsfw);
+    setPoolGroupIds(
+      [...(link.groups ?? [])]
+        .sort((a, b) => a.position - b.position)
+        .map((g) => g.id)
+    );
     setDialogOpen(true);
   }
 
@@ -333,7 +366,15 @@ export default function BioLinkPage() {
       toast.error('Escolha uma campanha de WhatsApp');
       return;
     }
-    if (linkType !== 'whatsapp' && !linkUrl.trim()) {
+    if (linkType === 'whatsapp_group' && poolGroupIds.length === 0) {
+      toast.error('Escolha ao menos um grupo');
+      return;
+    }
+    if (
+      linkType !== 'whatsapp' &&
+      linkType !== 'whatsapp_group' &&
+      !linkUrl.trim()
+    ) {
       toast.error('Informe a URL');
       return;
     }
@@ -342,7 +383,10 @@ export default function BioLinkPage() {
       const body = {
         type: linkType,
         label: linkLabel,
-        url: linkType === 'whatsapp' ? undefined : linkUrl,
+        url:
+          linkType === 'whatsapp' || linkType === 'whatsapp_group'
+            ? undefined
+            : linkUrl,
         ad_campaign_id: linkType === 'whatsapp' ? linkCampaignId : undefined,
         icon: linkIcon || undefined,
         button_color: linkButtonColor,
@@ -361,6 +405,19 @@ export default function BioLinkPage() {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Falha ao salvar botão');
+
+      if (linkType === 'whatsapp_group') {
+        const linkId = editingLink ? editingLink.id : data.data.id;
+        const poolRes = await fetch(`/api/bio-page/links/${linkId}/groups`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ whatsapp_group_ids: poolGroupIds }),
+        });
+        const poolData = await poolRes.json().catch(() => ({}));
+        if (!poolRes.ok)
+          throw new Error(poolData.error ?? 'Falha ao salvar os grupos');
+      }
+
       setDialogOpen(false);
       await loadAll();
       toast.success(editingLink ? 'Botão atualizado' : 'Botão adicionado');
@@ -725,7 +782,27 @@ export default function BioLinkPage() {
               />
             </div>
 
-            {linkType === 'whatsapp' ? (
+            {linkType === 'whatsapp_group' ? (
+              <div className="grid gap-2">
+                <Label>Grupos na fila (ordem de preenchimento)</Label>
+                <p className="text-muted-foreground text-xs">
+                  As pessoas entram no primeiro grupo da lista que ainda tiver
+                  vaga. Quando ele lotar, a próxima pessoa vai para o próximo
+                  grupo — e se um grupo esvaziar depois, ele volta a receber
+                  pessoas automaticamente.
+                </p>
+                <GroupPoolPicker
+                  allGroups={whatsappGroups}
+                  selectedIds={poolGroupIds}
+                  onChange={setPoolGroupIds}
+                />
+                {whatsappGroups.length === 0 && (
+                  <p className="text-muted-foreground text-xs">
+                    Crie um grupo em Grupos do WhatsApp primeiro.
+                  </p>
+                )}
+              </div>
+            ) : linkType === 'whatsapp' ? (
               <div className="grid gap-2">
                 <Label>Campanha de WhatsApp</Label>
                 <Select
@@ -918,7 +995,9 @@ function SortableLinkRow({
     link.type === 'whatsapp'
       ? (campaigns.find((c) => c.id === link.ad_campaign_id)?.name ??
         'Campanha removida')
-      : link.url;
+      : link.type === 'whatsapp_group'
+        ? `${link.groups?.length ?? 0} grupo${(link.groups?.length ?? 0) === 1 ? '' : 's'} na fila`
+        : link.url;
 
   return (
     <div
@@ -967,6 +1046,152 @@ function SortableLinkRow({
         variant="ghost"
         size="icon-xs"
         onClick={onDelete}
+        className="text-muted-foreground hover:text-red-400"
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+}
+
+// Checkbox-toggle + drag-reorder picker for a whatsapp_group link's
+// pool. Groups are added to the back of the queue when checked, and
+// only the selected subset renders as a draggable list — order there
+// is exactly the fill order the public redirect walks.
+function GroupPoolPicker({
+  allGroups,
+  selectedIds,
+  onChange,
+}: {
+  allGroups: WhatsappGroupOption[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+  const byId = new Map(allGroups.map((g) => [g.id, g]));
+  const available = allGroups.filter((g) => !selectedIds.includes(g.id));
+
+  function toggleOn(id: string) {
+    onChange([...selectedIds, id]);
+  }
+
+  function remove(id: string) {
+    onChange(selectedIds.filter((x) => x !== id));
+  }
+
+  function handleReorder(event: DragEndEvent) {
+    const { active: activeItem, over } = event;
+    if (!over || activeItem.id === over.id) return;
+    const oldIndex = selectedIds.indexOf(String(activeItem.id));
+    const newIndex = selectedIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    onChange(arrayMove(selectedIds, oldIndex, newIndex));
+  }
+
+  return (
+    <div className="space-y-3">
+      {selectedIds.length > 0 && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleReorder}
+        >
+          <SortableContext
+            items={selectedIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-1.5">
+              {selectedIds.map((id, index) => {
+                const group = byId.get(id);
+                if (!group) return null;
+                return (
+                  <SortableGroupRow
+                    key={id}
+                    id={id}
+                    index={index}
+                    group={group}
+                    onRemove={() => remove(id)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {available.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {available.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => toggleOn(g.id)}
+              className="border-border bg-muted text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
+            >
+              <Plus className="h-3 w-3" />
+              {g.name}
+              <span className="opacity-70">
+                {g.participant_count}
+                {g.max_participants ? `/${g.max_participants}` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortableGroupRow({
+  id,
+  index,
+  group,
+  onRemove,
+}: {
+  id: string;
+  index: number;
+  group: WhatsappGroupOption;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="border-border bg-muted flex items-center gap-2 rounded-lg border p-2"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground hover:text-foreground cursor-grab touch-none active:cursor-grabbing"
+        aria-label="Arraste para reordenar"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="text-muted-foreground w-5 shrink-0 text-xs font-medium">
+        {index + 1}º
+      </span>
+      <Users className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-sm">{group.name}</span>
+      <span className="text-muted-foreground shrink-0 text-xs">
+        {group.participant_count}
+        {group.max_participants ? `/${group.max_participants}` : ''}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={onRemove}
         className="text-muted-foreground hover:text-red-400"
       >
         <Trash2 className="h-3 w-3" />

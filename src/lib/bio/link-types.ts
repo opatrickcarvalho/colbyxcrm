@@ -5,7 +5,7 @@
 // (071_bio_pages.sql).
 // ============================================================
 
-export const BIO_LINK_TYPES = ['link', 'whatsapp', 'social', 'embed'] as const;
+export const BIO_LINK_TYPES = ['link', 'whatsapp', 'whatsapp_group', 'social', 'embed'] as const;
 export type BioLinkType = (typeof BIO_LINK_TYPES)[number];
 
 export function isBioLinkType(value: unknown): value is BioLinkType {
@@ -33,6 +33,7 @@ export function isSocialPlatform(value: unknown): value is SocialPlatform {
 export const BIO_LINK_TYPE_LABELS: Record<BioLinkType, string> = {
   link: 'Link',
   whatsapp: 'WhatsApp',
+  whatsapp_group: 'Grupo do WhatsApp (fila automática)',
   social: 'Rede social',
   embed: 'Vídeo/áudio embutido',
 };

@@ -105,6 +105,9 @@ export async function PATCH(
         }
         patch.ad_campaign_id = ad_campaign_id;
         patch.url = null;
+      } else if (type === ('whatsapp_group' as BioLinkType)) {
+        patch.url = null;
+        patch.ad_campaign_id = null;
       } else {
         if (!url || !url.trim()) {
           return NextResponse.json(

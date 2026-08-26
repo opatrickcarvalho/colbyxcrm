@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { resolvePublicBaseUrl } from '@/lib/http/public-base-url';
+import { resolveGroupPoolDestination } from '@/lib/bio/whatsapp-group-pool';
 
 function getClientIp(request: Request): string {
   const xff = request.headers.get('x-forwarded-for');
@@ -78,6 +79,12 @@ export async function GET(
       .maybeSingle();
     if (!campaign) return fallback();
     return NextResponse.redirect(`${base}/l/${campaign.code}`);
+  }
+
+  if (link.type === 'whatsapp_group') {
+    const destination = await resolveGroupPoolDestination(db, link.id);
+    if (!destination) return fallback();
+    return NextResponse.redirect(destination.inviteLink);
   }
 
   if (!link.url) return fallback();

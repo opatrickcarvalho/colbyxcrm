@@ -4,6 +4,20 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { isBioLinkType, type BioLinkType } from '@/lib/bio/link-types';
 import { isHexColor } from '@/lib/bio/theme';
 
+// Shape of a bio_page_link_groups row joined with its whatsapp_groups
+// target. Cast explicitly via .returns<>() because this client has no
+// generated Database types, so postgrest-js can't infer whether the
+// embedded relation is one-to-one or one-to-many on its own.
+interface PoolGroupJoinRow {
+  position: number;
+  group: {
+    id: string;
+    name: string;
+    participant_count: number;
+    max_participants: number | null;
+  } | null;
+}
+
 // CRUD for bio_page_links, scoped to the caller's single bio_pages row
 // (see 071_bio_pages.sql). Mirrors /api/ad-campaigns's shape.
 export async function GET() {
@@ -35,14 +49,38 @@ export async function GET() {
     }
 
     // Small per-page list — one lightweight count query per link,
-    // same reasoning as GET /api/ad-campaigns's counts.
+    // same reasoning as GET /api/ad-campaigns's counts. whatsapp_group
+    // links also get their pool embedded here so the editor dialog
+    // doesn't need a second round-trip per link.
     const withCounts = await Promise.all(
       (links ?? []).map(async (l) => {
         const { count } = await supabase
           .from('bio_page_link_clicks')
           .select('id', { count: 'exact', head: true })
           .eq('link_id', l.id);
-        return { ...l, click_count: count ?? 0 };
+
+        let groups: Array<{
+          id: string;
+          name: string;
+          participant_count: number;
+          max_participants: number | null;
+          position: number;
+        }> = [];
+        if (l.type === 'whatsapp_group') {
+          const { data: pool } = await supabase
+            .from('bio_page_link_groups')
+            .select(
+              'position, group:whatsapp_groups(id, name, participant_count, max_participants)'
+            )
+            .eq('link_id', l.id)
+            .order('position', { ascending: true })
+            .returns<PoolGroupJoinRow[]>();
+          groups = (pool ?? [])
+            .map((row) => (row.group ? { ...row.group, position: row.position } : null))
+            .filter((g): g is NonNullable<typeof g> => g !== null);
+        }
+
+        return { ...l, click_count: count ?? 0, groups };
       })
     );
 
@@ -147,6 +185,11 @@ export async function POST(request: Request) {
       }
       insert.ad_campaign_id = ad_campaign_id;
       insert.url = null;
+    } else if (type === ('whatsapp_group' as BioLinkType)) {
+      // Destination pool is managed separately via
+      // /api/bio-page/links/[id]/groups once this row has an id.
+      insert.url = null;
+      insert.ad_campaign_id = null;
     } else {
       if (!url || !url.trim()) {
         return NextResponse.json(
@@ -179,7 +222,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { data: { ...link, click_count: 0 } },
+      { data: { ...link, click_count: 0, groups: [] } },
       { status: 201 }
     );
   } catch (error) {
