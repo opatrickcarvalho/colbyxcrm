@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { GROUP_MEMBERSHIP_ANY } from '@/types';
 import {
   ArrowLeft,
   ChevronDown,
@@ -495,6 +496,7 @@ function GroupSelect({
       className={SELECT_CLASS}
     >
       <option value="">{t('groups.select')}</option>
+      <option value={GROUP_MEMBERSHIP_ANY}>{t('groups.any')}</option>
       {groups.map((g) => (
         <option key={g.group_jid} value={g.group_jid}>
           {g.name}

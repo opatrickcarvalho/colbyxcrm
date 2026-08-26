@@ -1421,6 +1421,7 @@
       },
       "groups": {
         "select": "Select a group…",
+        "any": "Any group (group pool)",
         "placeholder": "Group jid",
         "unknown": "{id} (unknown group)"
       },

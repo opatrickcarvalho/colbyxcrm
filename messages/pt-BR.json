@@ -1421,6 +1421,7 @@
       },
       "groups": {
         "select": "Selecione um grupo…",
+        "any": "Qualquer grupo (pool de grupos)",
         "placeholder": "JID do grupo",
         "unknown": "{id} (grupo desconhecido)"
       },

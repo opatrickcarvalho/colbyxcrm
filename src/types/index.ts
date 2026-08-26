@@ -638,6 +638,11 @@ export interface WaitStepConfig {
 export type ConditionSubject =
   'contact_field' | 'tag_presence' | 'message_content' | 'time_of_day' | 'group_membership';
 
+/** group_membership sentinel operand meaning "any active group on the
+ *  account" — for accounts that route invites through a pool of groups
+ *  (see whatsapp-group-pool.ts) rather than a single fixed group. */
+export const GROUP_MEMBERSHIP_ANY = '__any__';
+
 export interface ConditionStepConfig {
   subject: ConditionSubject;
   /** e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject */
