@@ -170,7 +170,7 @@ const nextConfig: NextConfig = {
         // above for these paths only; unlisted routes (marketing
         // pages, /login, etc.) keep the CDN-friendly caching.
         source:
-          "/:path((?:agents|automations|billing|broadcasts|contacts|dashboard|flows|group-broadcasts|groups|inbox|notifications|pipelines|scheduled-messages|settings|admin)(?:/.*)?)",
+          "/:path((?:ad-links|agents|automations|billing|bio-link|broadcasts|contacts|dashboard|flows|group-broadcasts|groups|inbox|notifications|pipelines|scheduled-messages|settings|admin)(?:/.*)?)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
