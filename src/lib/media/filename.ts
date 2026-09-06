@@ -49,6 +49,8 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.presentationml.presentation":
     "pptx",
   "text/plain": "txt",
+  "text/csv": "csv",
+  "application/zip": "zip",
 };
 
 /** Longest filename we'll produce, extension included. */
@@ -98,6 +100,32 @@ function hasExtension(name: string): boolean {
 }
 
 /**
+ * Trailing tokens that satisfy `hasExtension` but are really the tail of
+ * a MIME subtype, not a file extension. uazapi's inbound webhook names
+ * every stored object `uazapi.<token derived from the mime type>`; for
+ * the OOXML types that token came out as e.g.
+ * `vnd.openxmlformats-officedocument.spreadsheetml.sheet`, so an `.xlsx`
+ * landed on disk ending in `.sheet` and downloaded as a file Windows
+ * could not open. Treat such a name as "no usable filename in the URL"
+ * so `mediaFilename` falls through to synthesising one from the fetched
+ * bytes' real MIME type (which `extensionForMime` resolves correctly).
+ */
+const MIME_FRAGMENT_TAILS = new Set([
+  "sheet",
+  "presentation",
+  "document",
+  "spreadsheetml",
+  "wordprocessingml",
+  "presentationml",
+  "msword",
+]);
+
+function isMimeFragmentTail(name: string): boolean {
+  const m = /\.([A-Za-z0-9]{1,20})$/.exec(name);
+  return m ? MIME_FRAGMENT_TAILS.has(m[1].toLowerCase()) : false;
+}
+
+/**
  * Basename of a URL's path, query and fragment dropped, percent-decoded,
  * and with `buildMediaPath`'s `<epoch-ms>-` prefix removed. Returns "" when
  * the URL has no filename-looking last segment (e.g. a proxy URL, whose
@@ -122,7 +150,8 @@ export function basenameFromUrl(url: string): string {
   }
 
   const withoutStamp = decoded.replace(/^\d{10,}-/, "");
-  return hasExtension(withoutStamp) ? sanitizeFilename(withoutStamp) : "";
+  if (!hasExtension(withoutStamp) || isMimeFragmentTail(withoutStamp)) return "";
+  return sanitizeFilename(withoutStamp);
 }
 
 export type MediaFilenameInput = MediaMessageLike;

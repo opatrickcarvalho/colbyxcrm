@@ -89,6 +89,21 @@ describe("basenameFromUrl", () => {
   it("returns nothing when the last segment has no extension", () => {
     expect(basenameFromUrl("https://example.com/files/report")).toBe("");
   });
+
+  it("rejects a name whose 'extension' is really a MIME-subtype tail", () => {
+    // uazapi's inbound webhook stored OOXML docs as `uazapi.<mime tail>`,
+    // so an .xlsx ended up ending in `.sheet` — not a real extension.
+    expect(
+      basenameFromUrl(
+        "https://x.supabase.co/storage/v1/object/public/chat-media/account-a/1770000000000-uazapi.vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ),
+    ).toBe("");
+    expect(
+      basenameFromUrl(
+        "https://x.supabase.co/storage/v1/object/public/chat-media/account-a/1770000000000-uazapi.vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+    ).toBe("");
+  });
 });
 
 describe("mediaFilename", () => {
@@ -148,6 +163,23 @@ describe("mediaFilename", () => {
         "image/png",
       ),
     ).toBe("tabby.png");
+  });
+
+  it("synthesises a real extension from the MIME type when the URL name is a MIME tail", () => {
+    // The stored object is `…-uazapi.vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+    // (a broken name); the fetched bytes report the real spreadsheet MIME.
+    expect(
+      mediaFilename(
+        {
+          content_type: "document",
+          content_text: undefined,
+          media_url:
+            "https://x.supabase.co/storage/v1/object/public/chat-media/account-a/1770000000000-uazapi.vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          created_at: AT,
+        },
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ),
+    ).toMatch(/^whatsapp-document-\d{8}-\d{6}\.xlsx$/);
   });
 
   it("synthesises a timestamped name for inbound media", () => {

@@ -12,6 +12,7 @@ import {
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { extractButtonReply } from '@/lib/whatsapp/providers/uazapi-inbound';
 import { jidToPhone } from '@/lib/whatsapp/phone-utils';
+import { extensionForMime } from '@/lib/media/filename';
 import { rehostAvatar } from '@/lib/whatsapp/rehost-avatar';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { extractCampaignCode } from '@/lib/attribution/code';
@@ -299,24 +300,19 @@ function messagesFrom(body: UazapiWebhookBody): UazapiMessage[] {
  * why some players refused to open the file).
  */
 function extFromMime(mime: string, contentType: string): string {
-  const base = mime.split(';')[0]?.trim().toLowerCase();
-  const known: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'video/mp4': 'mp4',
-    'video/3gpp': '3gp',
-    'audio/ogg': 'ogg',
-    'audio/mpeg': 'mp3',
-    'audio/mp4': 'm4a',
-    'audio/aac': 'aac',
-    'audio/amr': 'amr',
-    'application/pdf': 'pdf',
-  };
-  if (base && known[base]) return known[base];
-  const guessed = base?.split('/')[1];
-  if (guessed) return guessed;
+  // Shared MIME→extension table — it knows the Office OOXML types
+  // (`…spreadsheetml.sheet` → `xlsx`, `…wordprocessingml.document` →
+  // `docx`, …) that the old inline map here did not.
+  const mapped = extensionForMime(mime);
+  if (mapped !== 'bin') return mapped;
+
+  // Unrecognised mime: fall back per normalised content_type. NEVER slice
+  // the subtype off the mime as a last resort the way this used to —
+  // `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  // sliced to `sheet`, so an .xlsx was stored (and downloaded) as
+  // `uazapi.vnd.openxmlformats-officedocument.spreadsheetml.sheet`, which
+  // nothing could open. `application/octet-stream` and `application/msword`
+  // hit this path too.
   if (contentType === 'image') return 'jpg';
   if (contentType === 'sticker') return 'webp';
   if (contentType === 'video') return 'mp4';
@@ -324,6 +320,11 @@ function extFromMime(mime: string, contentType: string): string {
   // mime comes back unrecognised.
   if (contentType === 'gif') return 'mp4';
   if (contentType === 'audio') return 'ogg';
+
+  // A *simple* subtype (`csv`, `xml`, `rtf`) is still a fine extension; a
+  // compound one (`vnd.…`, `octet-stream`, `svg+xml`, `msword`) is not.
+  const subtype = mime.split(';')[0]?.trim().toLowerCase().split('/')[1];
+  if (subtype && /^[a-z0-9]{1,5}$/.test(subtype)) return subtype;
   return 'bin';
 }
 
