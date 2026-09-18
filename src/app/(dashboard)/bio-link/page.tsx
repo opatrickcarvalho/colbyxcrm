@@ -20,12 +20,14 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   Copy,
   GripVertical,
+  Image as ImageIcon,
   Loader2,
   Plus,
   Save,
   Trash2,
   Upload,
   Users,
+  X,
 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
@@ -139,6 +141,7 @@ export default function BioLinkPage() {
   const { accountId } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const iconInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<BioPage | null>(null);
@@ -169,6 +172,8 @@ export default function BioLinkPage() {
   const [linkUrl, setLinkUrl] = useState('');
   const [linkCampaignId, setLinkCampaignId] = useState('');
   const [linkIcon, setLinkIcon] = useState('');
+  const [pendingIcon, setPendingIcon] = useState<File | null>(null);
+  const [iconPreviewUrl, setIconPreviewUrl] = useState<string | null>(null);
   const [linkButtonColor, setLinkButtonColor] = useState(DEFAULT_BUTTON_COLOR);
   const [linkTextColor, setLinkTextColor] = useState(DEFAULT_TEXT_COLOR);
   const [linkNsfw, setLinkNsfw] = useState(false);
@@ -226,6 +231,12 @@ export default function BioLinkPage() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (iconPreviewUrl) URL.revokeObjectURL(iconPreviewUrl);
+    };
+  }, [iconPreviewUrl]);
 
   async function handleCreate() {
     if (!newDisplayName.trim()) {
@@ -325,6 +336,12 @@ export default function BioLinkPage() {
     setPreviewUrl(URL.createObjectURL(file));
   }
 
+  function resetIconPicker() {
+    if (iconPreviewUrl) URL.revokeObjectURL(iconPreviewUrl);
+    setPendingIcon(null);
+    setIconPreviewUrl(null);
+  }
+
   function openAddDialog() {
     setEditingLink(null);
     setLinkType('link');
@@ -332,6 +349,7 @@ export default function BioLinkPage() {
     setLinkUrl('');
     setLinkCampaignId('');
     setLinkIcon('');
+    resetIconPicker();
     setLinkButtonColor(DEFAULT_BUTTON_COLOR);
     setLinkTextColor(DEFAULT_TEXT_COLOR);
     setLinkNsfw(false);
@@ -346,6 +364,7 @@ export default function BioLinkPage() {
     setLinkUrl(link.url ?? '');
     setLinkCampaignId(link.ad_campaign_id ?? '');
     setLinkIcon(link.icon ?? '');
+    resetIconPicker();
     setLinkButtonColor(link.button_color);
     setLinkTextColor(link.text_color);
     setLinkNsfw(link.nsfw);
@@ -355,6 +374,28 @@ export default function BioLinkPage() {
         .map((g) => g.id)
     );
     setDialogOpen(true);
+  }
+
+  function onPickIcon(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!ALLOWED_MIME.has(file.type)) {
+      toast.error('Formato de imagem não suportado');
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error('Imagem muito grande (máx. 2MB)');
+      return;
+    }
+    if (iconPreviewUrl) URL.revokeObjectURL(iconPreviewUrl);
+    setPendingIcon(file);
+    setIconPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function clearIcon() {
+    resetIconPicker();
+    setLinkIcon('');
   }
 
   async function handleSaveLink() {
@@ -380,6 +421,25 @@ export default function BioLinkPage() {
     }
     setSavingLink(true);
     try {
+      let iconValue = linkIcon;
+      if (pendingIcon && linkType !== 'social' && accountId) {
+        const ext = pendingIcon.name.split('.').pop()?.toLowerCase() || 'png';
+        const path = `${accountId}/link-icon-${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('bio-page-media')
+          .upload(path, pendingIcon, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: pendingIcon.type,
+          });
+        if (uploadError)
+          throw new Error(`Falha no upload do ícone: ${uploadError.message}`);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('bio-page-media').getPublicUrl(path);
+        iconValue = publicUrl;
+      }
+
       const body = {
         type: linkType,
         label: linkLabel,
@@ -388,7 +448,7 @@ export default function BioLinkPage() {
             ? undefined
             : linkUrl,
         ad_campaign_id: linkType === 'whatsapp' ? linkCampaignId : undefined,
-        icon: linkIcon || undefined,
+        icon: iconValue || null,
         button_color: linkButtonColor,
         text_color: linkTextColor,
         nsfw: linkNsfw,
@@ -838,7 +898,7 @@ export default function BioLinkPage() {
               </div>
             )}
 
-            {linkType === 'social' && (
+            {linkType === 'social' ? (
               <div className="grid gap-2">
                 <Label>Ícone</Label>
                 <Select
@@ -856,6 +916,55 @@ export default function BioLinkPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label>Logo do botão (opcional)</Label>
+                <div className="flex items-center gap-3">
+                  <div className="border-border bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border">
+                    {iconPreviewUrl || linkIcon ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={iconPreviewUrl || linkIcon}
+                        alt=""
+                        className="size-full object-contain"
+                      />
+                    ) : (
+                      <ImageIcon className="text-muted-foreground h-4 w-4" />
+                    )}
+                  </div>
+                  <input
+                    ref={iconInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={onPickIcon}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => iconInputRef.current?.click()}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Enviar logo
+                  </Button>
+                  {(iconPreviewUrl || linkIcon) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearIcon}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Remover
+                    </Button>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Mostra sua própria logo no botão em vez do ícone padrão —
+                  ex: a logo do Google Maps num botão de link.
+                </p>
               </div>
             )}
 

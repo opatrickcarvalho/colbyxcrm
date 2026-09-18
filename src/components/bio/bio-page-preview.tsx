@@ -134,10 +134,22 @@ export function BioPagePreview({
             // Unrecognized embed URL — falls through to a plain button below.
           }
 
+          const customIcon =
+            link.type !== 'social' && link.icon && /^https?:\/\//.test(link.icon)
+              ? link.icon
+              : null;
+
           const badge =
             link.type === 'social' ? (
               <SocialIcon
                 platform={isSocialPlatform(link.icon) ? link.icon : 'email'}
+              />
+            ) : customIcon ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={customIcon}
+                alt=""
+                className="size-5 shrink-0 rounded object-contain"
               />
             ) : link.type === 'whatsapp' ? (
               <MessageCircle className="size-4 shrink-0 opacity-60" />
