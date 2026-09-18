@@ -174,6 +174,22 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
+        // Public bio-link page (071_bio_pages.sql) and its
+        // /go/[linkId] click-redirect. Both are edited/consumed live —
+        // the s-maxage=300 / stale-while-revalidate=86400 policy above
+        // left visitors looking at a stale button set for minutes to a
+        // full day after an edit in the dashboard. Worse, it also
+        // cached the /go redirect itself, which is supposed to pick
+        // its whatsapp_group destination by LIVE capacity on every
+        // click (075_bio_page_link_groups.sql) — a cached redirect
+        // silently stops rotating and can send people to an already-
+        // full group. No per-user data here, so `no-store` alone (no
+        // `private`) is enough: nothing sensitive to withhold from a
+        // shared cache, we just need every request to hit the DB.
+        source: "/:path((?:b)(?:/.*)?)",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
         // Security headers on every response, including /_next/static
         // assets (nosniff matters there) and /api/* (HSTS + referrer-
         // policy don't hurt).
