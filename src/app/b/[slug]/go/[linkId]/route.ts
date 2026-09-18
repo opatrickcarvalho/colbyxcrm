@@ -11,6 +11,17 @@
 // type='whatsapp' links deliberately don't build a wa.me URL here —
 // they 302 through the existing /l/{code} route, which owns that
 // logic, its own click log, and the inbound-webhook attribution.
+//
+// `?format=json` returns `{ url }` instead of redirecting. The public
+// page's whatsapp_group buttons use this: resolving a destination can
+// mean cloning a brand-new WhatsApp group (see
+// src/lib/bio/whatsapp-group-pool.ts), which takes long enough that a
+// plain `<a href>` navigation looked hung to visitors. The JS-driven
+// button (src/components/bio/bio-page-preview.tsx) fetches this
+// instead, shows a countdown while it waits, and navigates itself
+// once the JSON response lands. Every other link type still renders
+// as a plain `<a href>` straight to this route with no query param,
+// so nothing about their instant-redirect behavior changes.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -32,8 +43,14 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; linkId: string }> }
 ) {
   const { slug, linkId } = await params;
+  const url = new URL(request.url);
+  const wantsJson = url.searchParams.get('format') === 'json';
   const base = resolvePublicBaseUrl(request, 'b/[slug]/go');
-  const fallback = () => NextResponse.redirect(`${base}/b/${slug}`);
+  const respond = (destination: string) =>
+    wantsJson
+      ? NextResponse.json({ url: destination })
+      : NextResponse.redirect(destination);
+  const fallback = () => respond(`${base}/b/${slug}`);
 
   if (!slug || !linkId) return fallback();
 
@@ -53,8 +70,6 @@ export async function GET(
     .eq('bio_page_id', page.id)
     .maybeSingle();
   if (!link || !link.active) return fallback();
-
-  const url = new URL(request.url);
 
   try {
     await db.from('bio_page_link_clicks').insert({
@@ -78,15 +93,15 @@ export async function GET(
       .eq('id', link.ad_campaign_id)
       .maybeSingle();
     if (!campaign) return fallback();
-    return NextResponse.redirect(`${base}/l/${campaign.code}`);
+    return respond(`${base}/l/${campaign.code}`);
   }
 
   if (link.type === 'whatsapp_group') {
     const destination = await resolveGroupPoolDestination(db, link.id);
     if (!destination) return fallback();
-    return NextResponse.redirect(destination.inviteLink);
+    return respond(destination.inviteLink);
   }
 
   if (!link.url) return fallback();
-  return NextResponse.redirect(link.url);
+  return respond(link.url);
 }
