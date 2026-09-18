@@ -1,11 +1,20 @@
 // ============================================================
 // Resolves a whatsapp_group-type bio button's destination at click
-// time. The pool (bio_page_link_groups) is walked in position order
-// and the first group with room wins — recomputed from scratch on
-// every call, with no "current group" pointer persisted anywhere.
-// That statelessness is deliberate: it's what makes a group that
-// drops back below max_participants become eligible again on its own
-// the next time someone clicks, with no extra logic required.
+// time. The pool (bio_page_link_groups) is walked emptiest-first (see
+// sortByAvailability, keyed off each group's cached fill level rather
+// than the editor's position order) and the first group with room
+// wins — recomputed from scratch on every call, with no "current
+// group" pointer persisted anywhere. That statelessness is
+// deliberate: it's what makes a group that drops back below
+// max_participants become eligible again on its own the next time
+// someone clicks, with no extra logic required.
+//
+// This walk makes NO live UAZAPI calls — it trusts the cached
+// participant_count/invite_link columns entirely (see the comment
+// inside resolveGroupPoolDestination for why that's safe). An earlier
+// version live-checked every candidate it walked, which put a UAZAPI
+// round trip on the critical path of every single click; that's gone
+// now, on purpose — a redirect should cost one DB read, nothing else.
 //
 // When every candidate is full, the pool auto-expands: a new group is
 // created on WhatsApp, cloned from the pool's first entry (same
@@ -116,6 +125,40 @@ async function releaseExpansionClaim(
   if (error) {
     console.error('[whatsapp-group-pool] claim release failed:', error.message);
   }
+}
+
+/**
+ * How full a group is, 0 (empty) to 1 (at capacity) and beyond. A
+ * group with no cap is treated as always emptiest (-1) — it can never
+ * run out, so it should always be tried before a capped group that
+ * might be close to full.
+ */
+function fillRatio(
+  group: Pick<PoolGroupRow, 'participant_count' | 'max_participants'>
+): number {
+  if (group.max_participants == null) return -1;
+  if (group.max_participants <= 0) return Infinity;
+  return group.participant_count / group.max_participants;
+}
+
+/**
+ * Sorts candidates emptiest-first by their last-known (cached) fill
+ * level, independent of the pool's display order (bio_page_link_groups
+ * .position, which the operator controls in the editor and which
+ * cloneIntoPool still uses to pick a template/next name).
+ *
+ * This is what actually decides which group a visitor lands in —
+ * resolveGroupPoolDestination trusts the cache and returns the first
+ * candidate with room in THIS order, not the editor's manual position
+ * order. The operator no longer controls fill priority by dragging
+ * rows; the system picks whichever group currently has the most room,
+ * every time, which is also what keeps the redirect itself from ever
+ * needing a live UAZAPI call on the common path.
+ */
+function sortByAvailability<
+  T extends Pick<PoolGroupRow, 'participant_count' | 'max_participants'>,
+>(groups: T[]): T[] {
+  return [...groups].sort((a, b) => fillRatio(a) - fillRatio(b));
 }
 
 // Matches "<base> #<n>" (the shape this module itself generates) so a
@@ -524,73 +567,46 @@ export async function resolveGroupPoolDestination(
     .filter((g): g is PoolGroupRow => g !== null);
   if (candidates.length === 0) return null;
 
-  // Credentials are per-account, not per-group — every group in one
-  // pool belongs to the same account as the link (enforced at write
-  // time), so resolving once up front is enough.
+  // Trusts the cached DB columns — no live getGroupInfo call per
+  // candidate. That used to happen here on every single click (one
+  // UAZAPI round trip per candidate walked, worst case one per group
+  // in the pool), which is exactly the latency the countdown UI
+  // (src/components/bio/bio-page-preview.tsx) exists to paper over.
+  // It's safe to trust the cache instead: participant_count is kept
+  // current by UAZAPI's own 'groups' webhook on every membership
+  // change (src/app/api/whatsapp/uazapi/webhook/[secret]/route.ts,
+  // the same value the Grupos do WhatsApp admin screen already
+  // displays without polling live), and invite_link only ever changes
+  // via an explicit reset action, not on its own. Self-healing (a
+  // group that drops back below max_participants becomes eligible
+  // again with no extra logic) still holds — it just now runs off the
+  // webhook's mirror instead of a live check made at click time.
+  //
+  // Walked emptiest-first (see sortByAvailability) rather than the
+  // editor's display order — `candidates` itself stays in position
+  // order below, since cloneIntoPool keys its template/name choice off
+  // that, not off current fill level.
+  for (const group of sortByAvailability(candidates)) {
+    const hasRoom =
+      group.max_participants == null ||
+      group.participant_count < group.max_participants;
+    if (!hasRoom) continue;
+    if (!group.invite_link) continue; // no usable destination for this candidate, try next
+
+    return { inviteLink: group.invite_link };
+  }
+
+  // Every candidate is full per cached data. Auto-expand the pool by
+  // cloning the template (the pool's first entry — the one an
+  // operator actually configured) rather than leaving visitors with
+  // nowhere to go. Credentials are only resolved down here, on the
+  // slow/rare path — the fast path above never needs them.
   let creds: { host: string; token: string } | null = null;
   try {
     creds = await resolveGroupCredentials(db, candidates[0].account_id);
   } catch (err) {
     console.error('[whatsapp-group-pool] resolveGroupCredentials failed:', err);
-    creds = null; // degrade to cached-count-only mode below
   }
-
-  for (const group of candidates) {
-    let participantCount = group.participant_count;
-    let inviteLink = group.invite_link;
-
-    if (creds) {
-      try {
-        const live = await getGroupInfo(
-          creds.host,
-          creds.token,
-          group.group_jid
-        );
-        participantCount = live.participantCount;
-        if (live.inviteLink) inviteLink = live.inviteLink;
-
-        // Best-effort mirror — never blocks the redirect. This is a
-        // public, high-traffic route, so this write is intentionally
-        // fire-and-forget rather than awaited.
-        db.from('whatsapp_groups')
-          .update({
-            participant_count: live.participantCount,
-            ...(live.inviteLink ? { invite_link: live.inviteLink } : {}),
-          })
-          .eq('id', group.id)
-          .then(({ error }) => {
-            if (error) {
-              console.error(
-                '[whatsapp-group-pool] mirror failed:',
-                error.message
-              );
-            }
-          });
-      } catch (err) {
-        // Live check failed for this one candidate — fall back to its
-        // cached DB columns rather than skipping it outright, so a
-        // transient UAZAPI blip doesn't wrongly exclude an available
-        // group.
-        console.error(
-          `[whatsapp-group-pool] getGroupInfo failed for group ${group.id}:`,
-          err
-        );
-      }
-    }
-
-    const hasRoom =
-      group.max_participants == null ||
-      participantCount < group.max_participants;
-    if (!hasRoom) continue;
-    if (!inviteLink) continue; // no usable destination for this candidate, try next
-
-    return { inviteLink };
-  }
-
-  // Every candidate is full (or unusable). Auto-expand the pool by
-  // cloning the template (the pool's first entry — the one an
-  // operator actually configured) rather than leaving visitors with
-  // nowhere to go.
   if (creds) {
     const clone = await cloneIntoPool(
       db,

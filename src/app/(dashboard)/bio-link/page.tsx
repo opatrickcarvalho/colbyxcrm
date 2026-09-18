@@ -148,7 +148,9 @@ export default function BioLinkPage() {
   const [page, setPage] = useState<BioPage | null>(null);
   const [links, setLinks] = useState<BioPageLink[]>([]);
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
-  const [whatsappGroups, setWhatsappGroups] = useState<WhatsappGroupOption[]>([]);
+  const [whatsappGroups, setWhatsappGroups] = useState<WhatsappGroupOption[]>(
+    []
+  );
 
   // Create form (shown when no page exists yet).
   const [newDisplayName, setNewDisplayName] = useState('');
@@ -847,12 +849,13 @@ export default function BioLinkPage() {
 
             {linkType === 'whatsapp_group' ? (
               <div className="grid gap-2">
-                <Label>Grupos na fila (ordem de preenchimento)</Label>
+                <Label>Grupos no pool</Label>
                 <p className="text-muted-foreground text-xs">
-                  As pessoas entram no primeiro grupo da lista que ainda tiver
-                  vaga. Quando ele lotar, a próxima pessoa vai para o próximo
-                  grupo — e se um grupo esvaziar depois, ele volta a receber
-                  pessoas automaticamente.
+                  O sistema manda cada pessoa automaticamente para o grupo com
+                  mais vaga no momento — a ordem abaixo não decide isso mais.
+                  Ela só define qual grupo serve de modelo (descrição, foto,
+                  administradores e limite) quando o sistema precisa criar um
+                  grupo novo sozinho: o primeiro da lista é o modelo.
                 </p>
                 <GroupPoolPicker
                   allGroups={whatsappGroups}
@@ -965,8 +968,8 @@ export default function BioLinkPage() {
                   )}
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  Mostra sua própria logo no botão em vez do ícone padrão —
-                  ex: a logo do Google Maps num botão de link.
+                  Mostra sua própria logo no botão em vez do ícone padrão — ex:
+                  a logo do Google Maps num botão de link.
                 </p>
               </div>
             )}
@@ -1267,8 +1270,14 @@ function SortableGroupRow({
   group: WhatsappGroupOption;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -1290,9 +1299,18 @@ function SortableGroupRow({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="text-muted-foreground w-5 shrink-0 text-xs font-medium">
-        {index + 1}º
-      </span>
+      {index === 0 ? (
+        <span
+          className="border-primary/30 bg-primary/10 text-primary shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+          title="Modelo copiado quando o sistema cria um grupo novo automaticamente"
+        >
+          Modelo
+        </span>
+      ) : (
+        <span className="text-muted-foreground w-5 shrink-0 text-xs font-medium">
+          {index + 1}º
+        </span>
+      )}
       <Users className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-sm">{group.name}</span>
       <span className="text-muted-foreground shrink-0 text-xs">
