@@ -950,6 +950,7 @@
       "title": "Grupos",
       "subtitle": "Crie e administre grupos de WhatsApp conectados a esta conta.",
       "newGroup": "Novo grupo",
+      "setupIssuesBadge": "Configuração pendente na criação automática",
       "noGroupsYet": "Nenhum grupo ainda",
       "createFirst": "Crie seu primeiro grupo de WhatsApp por aqui.",
       "notAvailableTitle": "Grupos exigem Uazapi",
@@ -1008,6 +1009,8 @@
     "detail": {
       "back": "Voltar para Grupos",
       "notFound": "Grupo não encontrado",
+      "setupIssuesTitle": "Configuração incompleta",
+      "setupIssuesHint": "Este grupo foi criado automaticamente pela fila de WhatsApp do bio-link e nem tudo foi confirmado depois das tentativas automáticas:",
       "participants": "Participantes ({count})",
       "refresh": "Atualizar",
       "admin": "Admin",

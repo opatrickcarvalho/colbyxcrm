@@ -81,7 +81,10 @@ async function acquireExpansionClaim(
     .insert({ link_id: linkId });
   if (!error) return true;
   if (!isUniqueViolation(error)) {
-    console.error('[whatsapp-group-pool] claim insert failed unexpectedly:', error);
+    console.error(
+      '[whatsapp-group-pool] claim insert failed unexpectedly:',
+      error
+    );
     return false;
   }
 
@@ -102,7 +105,10 @@ async function acquireExpansionClaim(
   return !retry.error;
 }
 
-async function releaseExpansionClaim(db: SupabaseClient, linkId: string): Promise<void> {
+async function releaseExpansionClaim(
+  db: SupabaseClient,
+  linkId: string
+): Promise<void> {
   const { error } = await db
     .from('bio_page_link_group_pool_claims')
     .delete()
@@ -149,42 +155,207 @@ interface CloneContext {
   nextPosition: number;
 }
 
+/** Sends description/picture/announce/locked + admin promotion to the
+ *  clone. Best-effort and independent per step — called once right
+ *  after creation and again by verifyCloneSetup's retries below, so
+ *  every step must be safe to resend (they all are: each just sets a
+ *  value or re-promotes a phone number that may already be admin). */
+async function applyCloneSettings(
+  host: string,
+  token: string,
+  jid: string,
+  template: PoolGroupRow,
+  imageUrl: string | null,
+  adminPhones: string[]
+): Promise<void> {
+  const steps = [
+    'description',
+    'image',
+    'announce',
+    'locked',
+    'promote-admins',
+  ] as const;
+  const results = await Promise.allSettled([
+    template.description
+      ? updateGroupDescription(host, token, jid, template.description)
+      : Promise.resolve(null),
+    imageUrl
+      ? updateGroupImage(host, token, jid, imageUrl)
+      : Promise.resolve(null),
+    template.is_announce
+      ? updateGroupAnnounce(host, token, jid, true)
+      : Promise.resolve(null),
+    template.is_locked
+      ? updateGroupLocked(host, token, jid, true)
+      : Promise.resolve(null),
+    updateGroupParticipants(host, token, {
+      groupjid: jid,
+      participants: adminPhones,
+      action: 'promote',
+    }),
+  ]);
+  results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      console.error(
+        `[whatsapp-group-pool] clone step "${steps[i]}" failed for ${jid}:`,
+        result.reason
+      );
+    }
+  });
+}
+
+/** Re-reads the clone and checks it actually matches the template —
+ *  in particular the thing this was built to guarantee: every admin
+ *  from the template group is really an admin on the clone. Returns a
+ *  human-readable issue per mismatch, empty when everything checks out. */
+async function verifyCloneSettings(
+  host: string,
+  token: string,
+  jid: string,
+  template: PoolGroupRow,
+  adminPhones: string[]
+): Promise<string[]> {
+  let live: UazapiGroup;
+  try {
+    live = await getGroupInfo(host, token, jid);
+  } catch (err) {
+    console.error(
+      `[whatsapp-group-pool] verify: getGroupInfo failed for ${jid}:`,
+      err
+    );
+    return [
+      'Não foi possível confirmar as configurações do grupo com a UAZAPI.',
+    ];
+  }
+
+  const issues: string[] = [];
+  if (
+    template.description &&
+    (live.description ?? '') !== template.description
+  ) {
+    issues.push('A descrição não ficou igual à do grupo modelo.');
+  }
+  if (template.is_announce && !live.isAnnounce) {
+    issues.push(
+      'O modo "somente administradores enviam mensagens" não foi ativado.'
+    );
+  }
+  if (template.is_locked && !live.isLocked) {
+    issues.push(
+      'O bloqueio de edição do grupo (só admin edita) não foi ativado.'
+    );
+  }
+  const liveAdmins = new Set(
+    live.participants
+      .filter((p) => p.isAdmin || p.isSuperAdmin)
+      .map((p) => p.phone)
+  );
+  const missingAdmins = adminPhones.filter((phone) => !liveAdmins.has(phone));
+  if (missingAdmins.length > 0) {
+    issues.push(
+      `${missingAdmins.length} de ${adminPhones.length} administrador(es) do grupo modelo não ficaram como admin no grupo novo.`
+    );
+  }
+  return issues;
+}
+
+/** Broadcasts a 'bio_group_clone_issue' notification to every account
+ *  member who can manage groups — same fan-out as notifyAiHandoff's
+ *  shared-queue case (src/lib/ai/handoff.ts). Best-effort: a failure
+ *  here must not undo anything the clone already accomplished. */
+async function notifyCloneIssues(
+  db: SupabaseClient,
+  accountId: string,
+  groupId: string,
+  groupName: string,
+  issues: string[]
+): Promise<void> {
+  try {
+    const { data: members } = await db
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .in('account_role', ['agent', 'admin', 'owner']);
+    const recipientIds = (members ?? []).map((m) => m.user_id as string);
+    if (recipientIds.length === 0) return;
+
+    const rows = recipientIds.map((userId) => ({
+      account_id: accountId,
+      user_id: userId,
+      type: 'bio_group_clone_issue' as const,
+      group_id: groupId,
+      title: `Grupo "${groupName}" criado com pendências`,
+      body: issues.join(' '),
+    }));
+    const { error } = await db.from('notifications').insert(rows);
+    if (error) {
+      console.error(
+        '[whatsapp-group-pool] clone-issue notification insert failed:',
+        error
+      );
+    }
+  } catch (err) {
+    console.error('[whatsapp-group-pool] clone-issue notification threw:', err);
+  }
+}
+
+// 1 initial apply + up to 2 retries. Each retry re-verifies from
+// scratch — WhatsApp's own state can lag a couple of seconds behind a
+// mutation, so a "missing admin" on the first check is often just not
+// settled yet rather than a real failure.
+const MAX_VERIFY_ATTEMPTS = 3;
+const VERIFY_RETRY_DELAY_MS = 2500;
+
 /**
- * Mirrors the template's description/picture/announce/locked settings
- * onto the clone, promotes the same admins, and saves the clone into
- * whatsapp_groups + the pool — all AFTER the visitor already has
- * their invite link (see cloneIntoPool). None of this blocks the
- * redirect; every step here is best-effort and only logs on failure.
+ * Mirrors the template's settings onto the clone, verifies they
+ * actually landed (re-reading the group rather than trusting the
+ * mutation calls' own responses), retries whatever didn't, and saves
+ * the outcome — all AFTER the visitor already has their invite link
+ * (see cloneIntoPool). None of this blocks the redirect.
+ *
+ * `whatsapp_groups.setup_issues` ends up empty when everything
+ * verified clean, or holding whatever's still wrong after the last
+ * retry — which also triggers notifyCloneIssues so it doesn't rely on
+ * someone happening to open the group to notice.
  */
 async function finishCloneInBackground(ctx: CloneContext): Promise<void> {
-  const { db, linkId, host, token, template, created, adminPhones, imageUrl, newName, nextPosition } = ctx;
+  const {
+    db,
+    linkId,
+    host,
+    token,
+    template,
+    created,
+    adminPhones,
+    imageUrl,
+    newName,
+    nextPosition,
+  } = ctx;
   try {
-    const steps = ['description', 'image', 'announce', 'locked', 'promote-admins'] as const;
-    const results = await Promise.allSettled([
-      template.description
-        ? updateGroupDescription(host, token, created.jid, template.description)
-        : Promise.resolve(null),
-      imageUrl ? updateGroupImage(host, token, created.jid, imageUrl) : Promise.resolve(null),
-      template.is_announce
-        ? updateGroupAnnounce(host, token, created.jid, true)
-        : Promise.resolve(null),
-      template.is_locked
-        ? updateGroupLocked(host, token, created.jid, true)
-        : Promise.resolve(null),
-      updateGroupParticipants(host, token, {
-        groupjid: created.jid,
-        participants: adminPhones,
-        action: 'promote',
-      }),
-    ]);
-    results.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        console.error(
-          `[whatsapp-group-pool] clone step "${steps[i]}" failed for ${created.jid}:`,
-          result.reason
+    let issues: string[] = [];
+    for (let attempt = 1; attempt <= MAX_VERIFY_ATTEMPTS; attempt++) {
+      await applyCloneSettings(
+        host,
+        token,
+        created.jid,
+        template,
+        imageUrl,
+        adminPhones
+      );
+      issues = await verifyCloneSettings(
+        host,
+        token,
+        created.jid,
+        template,
+        adminPhones
+      );
+      if (issues.length === 0) break;
+      if (attempt < MAX_VERIFY_ATTEMPTS) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, VERIFY_RETRY_DELAY_MS)
         );
       }
-    });
+    }
 
     const { data: newGroupRow, error: insertGroupError } = await db
       .from('whatsapp_groups')
@@ -201,6 +372,8 @@ async function finishCloneInBackground(ctx: CloneContext): Promise<void> {
         campaign_slug: template.campaign_slug,
         is_announce: template.is_announce,
         is_locked: template.is_locked,
+        setup_issues: issues,
+        setup_checked_at: new Date().toISOString(),
       })
       .select('id')
       .single();
@@ -213,16 +386,28 @@ async function finishCloneInBackground(ctx: CloneContext): Promise<void> {
       return; // nothing to join to the pool — the group still exists on WhatsApp
     }
 
-    const { error: insertPoolError } = await db.from('bio_page_link_groups').insert({
-      link_id: linkId,
-      whatsapp_group_id: newGroupRow.id,
-      account_id: template.account_id,
-      position: nextPosition,
-    });
+    const { error: insertPoolError } = await db
+      .from('bio_page_link_groups')
+      .insert({
+        link_id: linkId,
+        whatsapp_group_id: newGroupRow.id,
+        account_id: template.account_id,
+        position: nextPosition,
+      });
     if (insertPoolError) {
       console.error(
         '[whatsapp-group-pool] clone saved but failed to join the pool:',
         insertPoolError
+      );
+    }
+
+    if (issues.length > 0) {
+      await notifyCloneIssues(
+        db,
+        template.account_id,
+        newGroupRow.id,
+        newName,
+        issues
       );
     }
   } finally {
@@ -291,7 +476,9 @@ async function cloneIntoPool(
     // visitor can't be handed a destination without it.
     const withInvite = await getGroupInfo(host, token, created.jid);
     if (!withInvite.inviteLink) {
-      console.error(`[whatsapp-group-pool] clone ${created.jid} has no invite link yet`);
+      console.error(
+        `[whatsapp-group-pool] clone ${created.jid} has no invite link yet`
+      );
       return null;
     }
 
@@ -354,7 +541,11 @@ export async function resolveGroupPoolDestination(
 
     if (creds) {
       try {
-        const live = await getGroupInfo(creds.host, creds.token, group.group_jid);
+        const live = await getGroupInfo(
+          creds.host,
+          creds.token,
+          group.group_jid
+        );
         participantCount = live.participantCount;
         if (live.inviteLink) inviteLink = live.inviteLink;
 
@@ -369,7 +560,10 @@ export async function resolveGroupPoolDestination(
           .eq('id', group.id)
           .then(({ error }) => {
             if (error) {
-              console.error('[whatsapp-group-pool] mirror failed:', error.message);
+              console.error(
+                '[whatsapp-group-pool] mirror failed:',
+                error.message
+              );
             }
           });
       } catch (err) {
@@ -384,7 +578,9 @@ export async function resolveGroupPoolDestination(
       }
     }
 
-    const hasRoom = group.max_participants == null || participantCount < group.max_participants;
+    const hasRoom =
+      group.max_participants == null ||
+      participantCount < group.max_participants;
     if (!hasRoom) continue;
     if (!inviteLink) continue; // no usable destination for this candidate, try next
 

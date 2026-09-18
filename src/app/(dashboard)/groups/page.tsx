@@ -21,7 +21,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Users, Plus, Loader2, RefreshCw, Search } from 'lucide-react';
+import {
+  Users,
+  Plus,
+  Loader2,
+  RefreshCw,
+  Search,
+  AlertTriangle,
+} from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
@@ -35,6 +42,10 @@ interface GroupRow {
   campaign_slug: string | null;
   status: 'active' | 'archived';
   created_at: string;
+  /** Null = never auto-cloned (manual/imported group), so not applicable.
+   *  Empty array = auto-cloned and verified clean. Non-empty = still has
+   *  pending setup issues after retries — see whatsapp-group-pool.ts. */
+  setup_issues: string[] | null;
 }
 
 interface AvailableGroup {
@@ -47,16 +58,23 @@ interface AvailableGroup {
 
 function CapacityCell({ count, max }: { count: number; max: number | null }) {
   if (!max) {
-    return <span className="text-sm tabular-nums text-muted-foreground">{count}</span>;
+    return (
+      <span className="text-muted-foreground text-sm tabular-nums">
+        {count}
+      </span>
+    );
   }
   const pct = Math.min(100, Math.round((count / max) * 100));
   return (
     <div className="flex items-center gap-2">
-      <span className="w-16 text-right text-xs tabular-nums text-muted-foreground">
+      <span className="text-muted-foreground w-16 text-right text-xs tabular-nums">
         {count}/{max}
       </span>
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+      <div className="bg-muted h-1.5 w-20 overflow-hidden rounded-full">
+        <div
+          className="bg-primary h-1.5 rounded-full"
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -139,7 +157,9 @@ export default function GroupsPage() {
           name: trimmedName,
           participants,
           campaign_slug: campaignSlug.trim() || undefined,
-          max_participants: maxParticipants ? Number(maxParticipants) : undefined,
+          max_participants: maxParticipants
+            ? Number(maxParticipants)
+            : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -162,12 +182,16 @@ export default function GroupsPage() {
     setPickerLoading(true);
     setPickerError(null);
     try {
-      const res = await fetch('/api/whatsapp/groups/available', { cache: 'no-store' });
+      const res = await fetch('/api/whatsapp/groups/available', {
+        cache: 'no-store',
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? t('picker.errorLoad'));
       setAvailableGroups(data.data ?? []);
     } catch (err) {
-      setPickerError(err instanceof Error ? err.message : t('picker.errorLoad'));
+      setPickerError(
+        err instanceof Error ? err.message : t('picker.errorLoad')
+      );
     } finally {
       setPickerLoading(false);
     }
@@ -183,7 +207,9 @@ export default function GroupsPage() {
   function upsertGroupRow(row: GroupRow) {
     setGroups((prev) => {
       const exists = prev.some((g) => g.id === row.id);
-      return exists ? prev.map((g) => (g.id === row.id ? row : g)) : [row, ...prev];
+      return exists
+        ? prev.map((g) => (g.id === row.id ? row : g))
+        : [row, ...prev];
     });
   }
 
@@ -202,7 +228,9 @@ export default function GroupsPage() {
       }
       const row = data.data as GroupRow;
       setAvailableGroups((prev) =>
-        prev.map((g) => (g.jid === group.jid ? { ...g, status: 'active', localId: row.id } : g))
+        prev.map((g) =>
+          g.jid === group.jid ? { ...g, status: 'active', localId: row.id } : g
+        )
       );
       upsertGroupRow(row);
       toast.success(t('picker.addSuccess'));
@@ -229,7 +257,9 @@ export default function GroupsPage() {
       }
       const row = data.data as GroupRow;
       setAvailableGroups((prev) =>
-        prev.map((g) => (g.jid === group.jid ? { ...g, status: 'archived' } : g))
+        prev.map((g) =>
+          g.jid === group.jid ? { ...g, status: 'archived' } : g
+        )
       );
       upsertGroupRow(row);
       toast.success(t('picker.hideSuccess'));
@@ -247,7 +277,7 @@ export default function GroupsPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="text-primary h-6 w-6 animate-spin" />
       </div>
     );
   }
@@ -267,8 +297,8 @@ export default function GroupsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+          <h1 className="text-foreground text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <GatedButton
@@ -293,23 +323,33 @@ export default function GroupsPage() {
       </div>
 
       {groups.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border bg-card">
-          <Users className="mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">{t('noGroupsYet')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t('createFirst')}</p>
+        <div className="border-border bg-card flex h-64 flex-col items-center justify-center rounded-xl border">
+          <Users className="text-muted-foreground mb-3 h-10 w-10" />
+          <p className="text-foreground text-sm font-medium">
+            {t('noGroupsYet')}
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {t('createFirst')}
+          </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div className="border-border bg-card overflow-x-auto rounded-xl border">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">{t('table.name')}</TableHead>
-                <TableHead className="text-muted-foreground">{t('table.participants')}</TableHead>
-                <TableHead className="hidden text-muted-foreground sm:table-cell">
+                <TableHead className="text-muted-foreground">
+                  {t('table.name')}
+                </TableHead>
+                <TableHead className="text-muted-foreground">
+                  {t('table.participants')}
+                </TableHead>
+                <TableHead className="text-muted-foreground hidden sm:table-cell">
                   {t('table.campaign')}
                 </TableHead>
-                <TableHead className="text-muted-foreground">{t('table.status')}</TableHead>
-                <TableHead className="hidden text-muted-foreground sm:table-cell">
+                <TableHead className="text-muted-foreground">
+                  {t('table.status')}
+                </TableHead>
+                <TableHead className="text-muted-foreground hidden sm:table-cell">
                   {t('table.created')}
                 </TableHead>
               </TableRow>
@@ -318,17 +358,29 @@ export default function GroupsPage() {
               {groups.map((group) => (
                 <TableRow
                   key={group.id}
-                  className="cursor-pointer border-border hover:bg-muted/50"
+                  className="border-border hover:bg-muted/50 cursor-pointer"
                   onClick={() => router.push(`/groups/${group.id}`)}
                 >
-                  <TableCell className="font-medium text-foreground">{group.name}</TableCell>
+                  <TableCell className="text-foreground font-medium">
+                    <span className="flex items-center gap-1.5">
+                      {group.name}
+                      {group.setup_issues && group.setup_issues.length > 0 && (
+                        <span
+                          title={group.setup_issues.join(' ')}
+                          aria-label={t('setupIssuesBadge')}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                        </span>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <CapacityCell
                       count={group.participant_count}
                       max={group.max_participants}
                     />
                   </TableCell>
-                  <TableCell className="hidden text-muted-foreground sm:table-cell">
+                  <TableCell className="text-muted-foreground hidden sm:table-cell">
                     {group.campaign_slug || '—'}
                   </TableCell>
                   <TableCell>
@@ -342,7 +394,7 @@ export default function GroupsPage() {
                       {tStatus(group.status)}
                     </span>
                   </TableCell>
-                  <TableCell className="hidden text-muted-foreground sm:table-cell">
+                  <TableCell className="text-muted-foreground hidden sm:table-cell">
                     {new Date(group.created_at).toLocaleDateString()}
                   </TableCell>
                 </TableRow>
@@ -375,7 +427,9 @@ export default function GroupsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="group-participants">{t('create.participantsLabel')}</Label>
+              <Label htmlFor="group-participants">
+                {t('create.participantsLabel')}
+              </Label>
               <Textarea
                 id="group-participants"
                 value={participantsText}
@@ -383,13 +437,15 @@ export default function GroupsPage() {
                 placeholder={'5521987654321\n5511912345678'}
                 rows={4}
               />
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="text-muted-foreground mt-1 text-xs">
                 {t('create.participantsHint')}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="group-campaign">{t('create.campaignLabel')}</Label>
+                <Label htmlFor="group-campaign">
+                  {t('create.campaignLabel')}
+                </Label>
                 <Input
                   id="group-campaign"
                   value={campaignSlug}
@@ -398,7 +454,9 @@ export default function GroupsPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="group-max">{t('create.maxParticipantsLabel')}</Label>
+                <Label htmlFor="group-max">
+                  {t('create.maxParticipantsLabel')}
+                </Label>
                 <Input
                   id="group-max"
                   type="number"
@@ -410,7 +468,11 @@ export default function GroupsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={creating}>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={creating}
+            >
               {t('create.cancel')}
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
@@ -430,9 +492,11 @@ export default function GroupsPage() {
           <DialogHeader>
             <DialogTitle>{t('picker.title')}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">{t('picker.subtitle')}</p>
+          <p className="text-muted-foreground text-sm">
+            {t('picker.subtitle')}
+          </p>
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
             <Input
               value={pickerSearch}
               onChange={(e) => setPickerSearch(e.target.value)}
@@ -440,33 +504,43 @@ export default function GroupsPage() {
               className="pl-8"
             />
           </div>
-          <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+          <div className="border-border max-h-80 overflow-y-auto rounded-lg border">
             {pickerLoading ? (
               <div className="flex h-32 items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <Loader2 className="text-primary h-5 w-5 animate-spin" />
               </div>
             ) : pickerError ? (
               <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
                 <p className="text-sm text-red-400">{pickerError}</p>
-                <Button variant="outline" size="sm" onClick={() => void loadAvailableGroups()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadAvailableGroups()}
+                >
                   {t('retry')}
                 </Button>
               </div>
             ) : filteredAvailableGroups.length === 0 ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                {availableGroups.length === 0 ? t('noGroupsYet') : t('picker.noResults')}
+              <p className="text-muted-foreground p-6 text-center text-sm">
+                {availableGroups.length === 0
+                  ? t('noGroupsYet')
+                  : t('picker.noResults')}
               </p>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-border divide-y">
                 {filteredAvailableGroups.map((g) => (
                   <li
                     key={g.jid}
                     className="flex items-center justify-between gap-3 px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{g.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('picker.participants', { count: g.participantCount })}
+                      <p className="text-foreground truncate text-sm font-medium">
+                        {g.name}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {t('picker.participants', {
+                          count: g.participantCount,
+                        })}
                       </p>
                     </div>
                     {g.status === 'active' ? (

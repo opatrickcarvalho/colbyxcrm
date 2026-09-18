@@ -237,7 +237,8 @@ export interface WhatsAppLabel {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned' | 'ai_handoff';
+export type NotificationType =
+  'conversation_assigned' | 'ai_handoff' | 'bio_group_clone_issue';
 
 export interface Notification {
   id: string;
@@ -247,6 +248,8 @@ export interface Notification {
   type: NotificationType;
   conversation_id?: string;
   contact_id?: string;
+  /** Set for 'bio_group_clone_issue' — the whatsapp_groups row to deep-link to. */
+  group_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
   title: string;
@@ -636,7 +639,11 @@ export interface WaitStepConfig {
 }
 
 export type ConditionSubject =
-  'contact_field' | 'tag_presence' | 'message_content' | 'time_of_day' | 'group_membership';
+  | 'contact_field'
+  | 'tag_presence'
+  | 'message_content'
+  | 'time_of_day'
+  | 'group_membership';
 
 /** group_membership sentinel operand meaning "any active group on the
  *  account" — for accounts that route invites through a pool of groups

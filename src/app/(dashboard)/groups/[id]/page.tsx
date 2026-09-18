@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import {
+  AlertTriangle,
   ArrowLeft,
   Copy,
   Loader2,
@@ -56,6 +57,9 @@ interface LocalGroup {
   is_announce: boolean;
   is_locked: boolean;
   status: 'active' | 'archived';
+  /** See whatsapp-group-pool.ts — null when this group wasn't
+   *  auto-cloned, otherwise whatever's still wrong after retries. */
+  setup_issues: string[] | null;
 }
 
 function resizeAndConvertToJpegBase64(file: File): Promise<string> {
@@ -142,7 +146,9 @@ export default function GroupDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/whatsapp/groups/${groupId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/whatsapp/groups/${groupId}`, {
+        cache: 'no-store',
+      });
       if (res.status === 404) {
         setNotFound(true);
         return;
@@ -194,7 +200,8 @@ export default function GroupDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim() !== local.name ? name.trim() : undefined,
-          description: description !== (local.description ?? '') ? description : undefined,
+          description:
+            description !== (local.description ?? '') ? description : undefined,
           is_announce: announce !== local.is_announce ? announce : undefined,
           is_locked: locked !== local.is_locked ? locked : undefined,
           campaign_slug: campaignSlug.trim() || null,
@@ -240,7 +247,9 @@ export default function GroupDetailPage() {
         toast.error(data.error ?? t('participantActionError'));
         return;
       }
-      const failed = (data.results ?? []).filter((r: { error: number }) => r.error !== 0);
+      const failed = (data.results ?? []).filter(
+        (r: { error: number }) => r.error !== 0
+      );
       if (failed.length > 0) {
         toast.error(t('participantActionError'));
       } else {
@@ -293,7 +302,9 @@ export default function GroupDetailPage() {
         return;
       }
       toast.success(t('resetLinkSuccess'));
-      setLocal((prev) => (prev ? { ...prev, invite_link: data.invite_link } : prev));
+      setLocal((prev) =>
+        prev ? { ...prev, invite_link: data.invite_link } : prev
+      );
     } catch {
       toast.error(t('resetLinkError'));
     } finally {
@@ -312,7 +323,9 @@ export default function GroupDetailPage() {
     if (!window.confirm(t('leaveConfirm'))) return;
     setLeaving(true);
     try {
-      const res = await fetch(`/api/whatsapp/groups/${groupId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/whatsapp/groups/${groupId}`, {
+        method: 'DELETE',
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data.error ?? t('leaveError'));
@@ -330,7 +343,7 @@ export default function GroupDetailPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="text-primary h-6 w-6 animate-spin" />
       </div>
     );
   }
@@ -338,7 +351,7 @@ export default function GroupDetailPage() {
   if (notFound || !local) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-muted-foreground">{t('notFound')}</p>
+        <p className="text-muted-foreground text-sm">{t('notFound')}</p>
         <Button variant="outline" onClick={() => router.push('/groups')}>
           {t('back')}
         </Button>
@@ -354,12 +367,17 @@ export default function GroupDetailPage() {
         <button
           type="button"
           onClick={() => router.push('/groups')}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('back')}
         </button>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
           {refreshing ? (
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
           ) : (
@@ -369,18 +387,39 @@ export default function GroupDetailPage() {
         </Button>
       </div>
 
-      <h1 className="text-2xl font-bold text-foreground">{local.name}</h1>
+      <h1 className="text-foreground text-2xl font-bold">{local.name}</h1>
+
+      {local.setup_issues && local.setup_issues.length > 0 && (
+        <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+          <div className="space-y-1">
+            <p className="text-foreground text-sm font-medium">
+              {t('setupIssuesTitle')}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              {t('setupIssuesHint')}
+            </p>
+            <ul className="text-muted-foreground mt-1 list-inside list-disc text-xs">
+              {local.setup_issues.map((issue, i) => (
+                <li key={i}>{issue}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Settings */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <h2 className="mb-4 text-sm font-semibold text-foreground">{t('settings')}</h2>
+      <div className="border-border bg-card rounded-xl border p-4">
+        <h2 className="text-foreground mb-4 text-sm font-semibold">
+          {t('settings')}
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2 flex flex-wrap items-center gap-5 mb-2">
+          <div className="mb-2 flex flex-wrap items-center gap-5 sm:col-span-2">
             <Avatar size="lg" className="h-16 w-16">
               {stagedImageUrl || (avatarUrl && !removingImage) ? (
                 <AvatarImage src={stagedImageUrl || avatarUrl!} alt={name} />
               ) : null}
-              <AvatarFallback className="bg-primary/10 text-xl text-primary">
+              <AvatarFallback className="bg-primary/10 text-primary text-xl">
                 {name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -399,8 +438,10 @@ export default function GroupDetailPage() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={saving || !canManage}
               >
-                <Upload className="h-4 w-4 mr-2" />
-                {avatarUrl ? (t('changePhoto') || 'Mudar foto') : (t('uploadPhoto') || 'Enviar foto')}
+                <Upload className="mr-2 h-4 w-4" />
+                {avatarUrl
+                  ? t('changePhoto') || 'Mudar foto'
+                  : t('uploadPhoto') || 'Enviar foto'}
               </Button>
               {(stagedImageUrl || (avatarUrl && !removingImage)) && (
                 <Button
@@ -410,7 +451,7 @@ export default function GroupDetailPage() {
                   disabled={saving || !canManage}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <Trash2 className="mr-2 h-4 w-4" />
                   {t('remove') || 'Remover'}
                 </Button>
               )}
@@ -418,7 +459,12 @@ export default function GroupDetailPage() {
           </div>
           <div>
             <Label htmlFor="g-name">{t('nameLabel')}</Label>
-            <Input id="g-name" value={name} maxLength={25} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="g-name"
+              value={name}
+              maxLength={25}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="g-campaign">{t('campaignLabel')}</Label>
@@ -448,12 +494,14 @@ export default function GroupDetailPage() {
               onChange={(e) => setMaxParticipants(e.target.value)}
             />
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-            <span className="text-sm text-foreground">{t('announceLabel')}</span>
+          <div className="border-border flex items-center justify-between rounded-lg border px-3 py-2">
+            <span className="text-foreground text-sm">
+              {t('announceLabel')}
+            </span>
             <Switch checked={announce} onCheckedChange={setAnnounce} />
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-            <span className="text-sm text-foreground">{t('lockedLabel')}</span>
+          <div className="border-border flex items-center justify-between rounded-lg border px-3 py-2">
+            <span className="text-foreground text-sm">{t('lockedLabel')}</span>
             <Switch checked={locked} onCheckedChange={setLocked} />
           </div>
         </div>
@@ -481,7 +529,12 @@ export default function GroupDetailPage() {
               </>
             )}
           </div>
-          <GatedButton canAct={canManage} gateReason="send messages" disabled={saving} onClick={handleSave}>
+          <GatedButton
+            canAct={canManage}
+            gateReason="send messages"
+            disabled={saving}
+            onClick={handleSave}
+          >
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
             {saving ? t('saving') : t('save')}
           </GatedButton>
@@ -489,13 +542,17 @@ export default function GroupDetailPage() {
       </div>
 
       {/* Participants */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <h2 className="mb-4 text-sm font-semibold text-foreground">
-          {t('participants', { count: live?.participantCount ?? local.participant_count })}
+      <div className="border-border bg-card rounded-xl border p-4">
+        <h2 className="text-foreground mb-4 text-sm font-semibold">
+          {t('participants', {
+            count: live?.participantCount ?? local.participant_count,
+          })}
         </h2>
 
         {!live && (
-          <p className="mb-4 text-xs text-muted-foreground">{t('unavailable')}</p>
+          <p className="text-muted-foreground mb-4 text-xs">
+            {t('unavailable')}
+          </p>
         )}
 
         {canManage && (
@@ -510,7 +567,10 @@ export default function GroupDetailPage() {
                 rows={2}
               />
             </div>
-            <Button onClick={handleAddParticipants} disabled={addingParticipants || !addText.trim()}>
+            <Button
+              onClick={handleAddParticipants}
+              disabled={addingParticipants || !addText.trim()}
+            >
               {addingParticipants ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
               ) : (
@@ -522,15 +582,18 @@ export default function GroupDetailPage() {
         )}
 
         {participants.length > 0 && (
-          <ul className="divide-y divide-border">
+          <ul className="divide-border divide-y">
             {participants.map((p) => (
-              <li key={p.jid} className="flex items-center justify-between py-2">
+              <li
+                key={p.jid}
+                className="flex items-center justify-between py-2"
+              >
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-foreground">
+                  <p className="text-foreground truncate text-sm">
                     {p.displayName || p.phone || p.jid}
                   </p>
                   {(p.isAdmin || p.isSuperAdmin) && (
-                    <span className="text-xs text-primary">
+                    <span className="text-primary text-xs">
                       {p.isSuperAdmin ? t('superAdmin') : t('admin')}
                     </span>
                   )}
@@ -549,7 +612,7 @@ export default function GroupDetailPage() {
                         )
                       }
                       title={p.isAdmin ? t('demote') : t('promote')}
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
                     >
                       {p.isAdmin ? (
                         <ShieldOff className="h-4 w-4" />
@@ -561,9 +624,11 @@ export default function GroupDetailPage() {
                       variant="ghost"
                       size="sm"
                       disabled={busyJid === p.jid}
-                      onClick={() => handleSingleParticipantAction('remove', p.jid, p.phone)}
+                      onClick={() =>
+                        handleSingleParticipantAction('remove', p.jid, p.phone)
+                      }
                       title={t('remove')}
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-red-400"
+                      className="text-muted-foreground h-8 w-8 p-0 hover:text-red-400"
                     >
                       <UserMinus className="h-4 w-4" />
                     </Button>

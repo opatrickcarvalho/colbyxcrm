@@ -949,6 +949,7 @@
       "title": "그룹",
       "subtitle": "이 계정에 연결된 WhatsApp 그룹을 만들고 관리하세요.",
       "newGroup": "새 그룹",
+      "setupIssuesBadge": "자동 생성 설정 미완료",
       "noGroupsYet": "아직 그룹이 없습니다",
       "createFirst": "여기서 첫 WhatsApp 그룹을 만드세요.",
       "notAvailableTitle": "그룹 기능은 Uazapi가 필요합니다",
@@ -1007,6 +1008,8 @@
     "detail": {
       "back": "그룹으로 돌아가기",
       "notFound": "그룹을 찾을 수 없습니다",
+      "setupIssuesTitle": "설정 미완료",
+      "setupIssuesHint": "이 그룹은 bio-link WhatsApp 대기열에 의해 자동으로 생성되었으며, 자동 재시도 후에도 확인되지 않은 항목이 있습니다:",
       "participants": "참가자 ({count})",
       "refresh": "새로고침",
       "admin": "관리자",
