@@ -60,6 +60,7 @@ import {
   type BioLinkType,
 } from '@/lib/bio/link-types';
 import { BioPagePreview } from '@/components/bio/bio-page-preview';
+import { BioLinkStats } from '@/components/bio/bio-link-stats';
 import {
   DEFAULT_BUTTON_COLOR,
   DEFAULT_TEXT_COLOR,
@@ -645,6 +646,8 @@ export default function BioLinkPage() {
           agora
         </p>
       </div>
+
+      <BioLinkStats viewCount={page.view_count} links={links} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="max-w-xl space-y-6">
