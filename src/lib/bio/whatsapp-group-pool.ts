@@ -14,12 +14,20 @@
 // pool, and returned as the destination. This is the one place the
 // pool actually mutates instead of just reading live state.
 //
+// Expansion is guarded by bio_page_link_group_pool_claims
+// (076_bio_page_link_group_pool_claims.sql) — see acquireExpansionClaim
+// below for why: cloning takes several sequential UAZAPI round trips,
+// and a visitor who doesn't see the page navigate right away tends to
+// click again, which without a claim raced a second clone into
+// existence for the same exhausted pool.
+//
 // Called only from the public /b/{slug}/go/{linkId} route, so `db`
 // must always be a service-role client (supabaseAdmin()) — there is
 // no session on a public page view.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { fetchChatAvatar } from '@/lib/whatsapp/providers/uazapi';
 import {
   createGroup,
@@ -30,6 +38,7 @@ import {
   updateGroupImage,
   updateGroupLocked,
   updateGroupParticipants,
+  type UazapiGroup,
 } from '@/lib/whatsapp/providers/uazapi-groups';
 
 interface PoolGroupRow {
@@ -45,6 +54,62 @@ interface PoolGroupRow {
   campaign_slug: string | null;
   is_announce: boolean;
   is_locked: boolean;
+}
+
+// A claim older than this is assumed to belong to a process that
+// crashed mid-clone (never reached its own release) rather than one
+// genuinely still working — cloning normally finishes in well under a
+// minute, so this is a generous timeout, not a tight one.
+const STALE_CLAIM_MS = 2 * 60 * 1000;
+
+/**
+ * Claims the exclusive right to expand `linkId`'s pool. Returns false
+ * if another request already holds a fresh claim — the caller should
+ * back off rather than also clone.
+ *
+ * Concurrency safety comes from bio_page_link_group_pool_claims'
+ * PRIMARY KEY on link_id: only one of two simultaneous INSERTs for
+ * the same link can succeed, so only one request ever proceeds past
+ * this point for a given exhausted pool.
+ */
+async function acquireExpansionClaim(
+  db: SupabaseClient,
+  linkId: string
+): Promise<boolean> {
+  const { error } = await db
+    .from('bio_page_link_group_pool_claims')
+    .insert({ link_id: linkId });
+  if (!error) return true;
+  if (!isUniqueViolation(error)) {
+    console.error('[whatsapp-group-pool] claim insert failed unexpectedly:', error);
+    return false;
+  }
+
+  // Someone holds it. If their claim is stale, clear it and take over
+  // instead of leaving the pool permanently stuck below capacity.
+  const staleCutoff = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+  const { data: cleared } = await db
+    .from('bio_page_link_group_pool_claims')
+    .delete()
+    .eq('link_id', linkId)
+    .lt('claimed_at', staleCutoff)
+    .select('link_id');
+  if (!cleared || cleared.length === 0) return false; // held, and fresh — back off
+
+  const retry = await db
+    .from('bio_page_link_group_pool_claims')
+    .insert({ link_id: linkId });
+  return !retry.error;
+}
+
+async function releaseExpansionClaim(db: SupabaseClient, linkId: string): Promise<void> {
+  const { error } = await db
+    .from('bio_page_link_group_pool_claims')
+    .delete()
+    .eq('link_id', linkId);
+  if (error) {
+    console.error('[whatsapp-group-pool] claim release failed:', error.message);
+  }
 }
 
 // Matches "<base> #<n>" (the shape this module itself generates) so a
@@ -71,20 +136,109 @@ function nextSequentialName(templateName: string, poolNames: string[]): string {
   return `${base} #${maxSeq + 1}`;
 }
 
+interface CloneContext {
+  db: SupabaseClient;
+  linkId: string;
+  host: string;
+  token: string;
+  template: PoolGroupRow;
+  created: UazapiGroup;
+  adminPhones: string[];
+  imageUrl: string | null;
+  newName: string;
+  nextPosition: number;
+}
+
 /**
- * Clones `template` into a brand-new WhatsApp group and joins it onto
- * the pool at the end. Best-effort throughout — any failure logs and
- * returns null so the caller falls back to "pool exhausted" instead
- * of breaking the redirect.
+ * Mirrors the template's description/picture/announce/locked settings
+ * onto the clone, promotes the same admins, and saves the clone into
+ * whatsapp_groups + the pool — all AFTER the visitor already has
+ * their invite link (see cloneIntoPool). None of this blocks the
+ * redirect; every step here is best-effort and only logs on failure.
+ */
+async function finishCloneInBackground(ctx: CloneContext): Promise<void> {
+  const { db, linkId, host, token, template, created, adminPhones, imageUrl, newName, nextPosition } = ctx;
+  try {
+    const steps = ['description', 'image', 'announce', 'locked', 'promote-admins'] as const;
+    const results = await Promise.allSettled([
+      template.description
+        ? updateGroupDescription(host, token, created.jid, template.description)
+        : Promise.resolve(null),
+      imageUrl ? updateGroupImage(host, token, created.jid, imageUrl) : Promise.resolve(null),
+      template.is_announce
+        ? updateGroupAnnounce(host, token, created.jid, true)
+        : Promise.resolve(null),
+      template.is_locked
+        ? updateGroupLocked(host, token, created.jid, true)
+        : Promise.resolve(null),
+      updateGroupParticipants(host, token, {
+        groupjid: created.jid,
+        participants: adminPhones,
+        action: 'promote',
+      }),
+    ]);
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `[whatsapp-group-pool] clone step "${steps[i]}" failed for ${created.jid}:`,
+          result.reason
+        );
+      }
+    });
+
+    const { data: newGroupRow, error: insertGroupError } = await db
+      .from('whatsapp_groups')
+      .insert({
+        account_id: template.account_id,
+        whatsapp_config_id: template.whatsapp_config_id,
+        group_jid: created.jid,
+        name: created.name || newName,
+        description: template.description,
+        image_url: imageUrl,
+        invite_link: created.inviteLink || null,
+        participant_count: created.participantCount,
+        max_participants: template.max_participants,
+        campaign_slug: template.campaign_slug,
+        is_announce: template.is_announce,
+        is_locked: template.is_locked,
+      })
+      .select('id')
+      .single();
+
+    if (insertGroupError || !newGroupRow) {
+      console.error(
+        '[whatsapp-group-pool] clone created on WhatsApp but failed to save locally:',
+        insertGroupError
+      );
+      return; // nothing to join to the pool — the group still exists on WhatsApp
+    }
+
+    const { error: insertPoolError } = await db.from('bio_page_link_groups').insert({
+      link_id: linkId,
+      whatsapp_group_id: newGroupRow.id,
+      account_id: template.account_id,
+      position: nextPosition,
+    });
+    if (insertPoolError) {
+      console.error(
+        '[whatsapp-group-pool] clone saved but failed to join the pool:',
+        insertPoolError
+      );
+    }
+  } finally {
+    await releaseExpansionClaim(db, linkId);
+  }
+}
+
+/**
+ * Clones `template` into a brand-new WhatsApp group, hands back its
+ * invite link as soon as that link exists, and finishes the rest
+ * (settings mirror, admin promotion, saving it into the pool) in the
+ * background — see finishCloneInBackground.
  *
- * No locking: two clicks landing at the same instant on a fully-
- * exhausted pool can both decide to clone and both succeed, producing
- * two new groups (possibly with the same generated name, since both
- * compute the sequence from the same pre-expansion snapshot). That
- * mirrors the rest of this module's stateless posture — an extra
- * group is harmless and the pool self-heals on the next read — so it
- * isn't worth a distributed lock for what should be a rare event
- * (every group in the pool full at the same moment).
+ * Guarded by acquireExpansionClaim: if another request is already
+ * cloning for this exact link, this call returns null immediately
+ * (same as "pool exhausted") instead of starting a redundant clone.
  */
 async function cloneIntoPool(
   db: SupabaseClient,
@@ -95,6 +249,9 @@ async function cloneIntoPool(
   currentPoolNames: string[],
   nextPosition: number
 ): Promise<{ inviteLink: string } | null> {
+  if (!(await acquireExpansionClaim(db, linkId))) return null;
+
+  let handedOff = false;
   try {
     const [live, imageUrl] = await Promise.all([
       getGroupInfo(host, token, template.group_jid),
@@ -128,98 +285,36 @@ async function cloneIntoPool(
       return null;
     }
 
-    // Mirror the rest of the template's settings + promote the same
-    // admins onto the clone. Each step is independent and best-effort
-    // — a clone that's missing its description because this call
-    // failed is still a usable destination, so none of these block
-    // the redirect below.
-    const steps = [
-      'description',
-      'image',
-      'announce',
-      'locked',
-      'promote-admins',
-    ] as const;
-    const results = await Promise.allSettled([
-      template.description
-        ? updateGroupDescription(host, token, created.jid, template.description)
-        : Promise.resolve(null),
-      imageUrl ? updateGroupImage(host, token, created.jid, imageUrl) : Promise.resolve(null),
-      template.is_announce
-        ? updateGroupAnnounce(host, token, created.jid, true)
-        : Promise.resolve(null),
-      template.is_locked
-        ? updateGroupLocked(host, token, created.jid, true)
-        : Promise.resolve(null),
-      updateGroupParticipants(host, token, {
-        groupjid: created.jid,
-        participants: adminPhones,
-        action: 'promote',
-      }),
-    ]);
-    results.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        console.error(
-          `[whatsapp-group-pool] clone step "${steps[i]}" failed for ${created.jid}:`,
-          result.reason
-        );
-      }
-    });
-
-    // Re-read after the mirror steps so what we save locally (and
-    // hand back as the destination) reflects the clone's real,
-    // settled state rather than the pre-mirror creation response.
-    const final = await getGroupInfo(host, token, created.jid);
-
-    const { data: newGroupRow, error: insertGroupError } = await db
-      .from('whatsapp_groups')
-      .insert({
-        account_id: template.account_id,
-        whatsapp_config_id: template.whatsapp_config_id,
-        group_jid: created.jid,
-        name: final.name || newName,
-        description: template.description,
-        image_url: imageUrl,
-        invite_link: final.inviteLink || null,
-        participant_count: final.participantCount,
-        max_participants: template.max_participants,
-        campaign_slug: template.campaign_slug,
-        is_announce: final.isAnnounce,
-        is_locked: final.isLocked,
-      })
-      .select('id, invite_link')
-      .single();
-
-    if (insertGroupError || !newGroupRow) {
-      console.error(
-        '[whatsapp-group-pool] clone created on WhatsApp but failed to save locally:',
-        insertGroupError
-      );
-      // The group is real on WhatsApp even though we couldn't record
-      // it — still hand back its invite link so this click isn't
-      // wasted. It stays outside the pool (invisible to future
-      // rotation) until someone reconciles it, e.g. via Grupos do
-      // WhatsApp's own import flow.
-      return final.inviteLink ? { inviteLink: final.inviteLink } : null;
+    // /group/create's response doesn't reliably carry an invite link
+    // (that's opt-in via getInviteLink on /group/info) — fetch it
+    // explicitly rather than assume. This is on the critical path: the
+    // visitor can't be handed a destination without it.
+    const withInvite = await getGroupInfo(host, token, created.jid);
+    if (!withInvite.inviteLink) {
+      console.error(`[whatsapp-group-pool] clone ${created.jid} has no invite link yet`);
+      return null;
     }
 
-    const { error: insertPoolError } = await db.from('bio_page_link_groups').insert({
-      link_id: linkId,
-      whatsapp_group_id: newGroupRow.id,
-      account_id: template.account_id,
-      position: nextPosition,
+    handedOff = true;
+    void finishCloneInBackground({
+      db,
+      linkId,
+      host,
+      token,
+      template,
+      created: withInvite,
+      adminPhones,
+      imageUrl,
+      newName,
+      nextPosition,
     });
-    if (insertPoolError) {
-      console.error(
-        '[whatsapp-group-pool] clone saved but failed to join the pool:',
-        insertPoolError
-      );
-    }
 
-    return newGroupRow.invite_link ? { inviteLink: newGroupRow.invite_link } : null;
+    return { inviteLink: withInvite.inviteLink };
   } catch (err) {
     console.error('[whatsapp-group-pool] auto-clone failed:', err);
     return null;
+  } finally {
+    if (!handedOff) await releaseExpansionClaim(db, linkId);
   }
 }
 
