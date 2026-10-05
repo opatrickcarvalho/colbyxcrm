@@ -506,6 +506,55 @@ export async function DELETE() {
       )
     }
 
+    const { data: existing } = await supabase
+      .from('whatsapp_config')
+      .select('provider, uazapi_host, uazapi_instance_token, webhook_secret')
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    // Disconnecting Meta on an account that came over from UAZAPI must
+    // not delete the row: it still holds the UAZAPI instance token, and
+    // uazapi's API offers no way to delete an instance — losing the
+    // token strands the paired instance and forces a brand-new QR scan.
+    // Drop only the Meta credentials and hand the row back to UAZAPI
+    // (which also clears uazapi/connect's Meta-switch guard). Status goes
+    // to 'disconnected'; pressing connect re-checks the stored instance
+    // and reuses it without a new scan if it is still paired.
+    if (
+      existing &&
+      existing.provider !== 'uazapi' &&
+      existing.uazapi_host &&
+      existing.uazapi_instance_token &&
+      existing.webhook_secret
+    ) {
+      const { error: switchError } = await supabase
+        .from('whatsapp_config')
+        .update({
+          provider: 'uazapi',
+          status: 'disconnected',
+          connected_at: null,
+          phone_number_id: null,
+          waba_id: null,
+          access_token: null,
+          verify_token: null,
+          registered_at: null,
+          subscribed_apps_at: null,
+          last_registration_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('account_id', accountId)
+
+      if (switchError) {
+        console.error('Error switching whatsapp_config back to uazapi:', switchError)
+        return NextResponse.json(
+          { error: 'Failed to delete configuration' },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({ success: true, switched_to: 'uazapi' })
+    }
+
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
       .delete()

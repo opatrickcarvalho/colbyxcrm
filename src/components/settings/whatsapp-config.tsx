@@ -385,6 +385,25 @@ export function WhatsAppConfig() {
         return;
       }
 
+      // The account still had its UAZAPI instance on file, so the server
+      // dropped only the Meta credentials and handed the row back to
+      // UAZAPI. Land on that tab so reconnecting is one click.
+      if (data.switched_to === 'uazapi') {
+        toast.success(
+          'Official API disconnected. Reconnect UAZAPI to resume sending.'
+        );
+        setPhoneNumberId('');
+        setWabaId('');
+        setAccessToken('');
+        setVerifyToken('');
+        setTokenEdited(false);
+        setResetReason(null);
+        setStatusMessage('');
+        setProviderChoice('uazapi');
+        if (accountId) await fetchConfig(accountId);
+        return;
+      }
+
       toast.success(
         'Configuration cleared. You can now re-enter your credentials.'
       );
