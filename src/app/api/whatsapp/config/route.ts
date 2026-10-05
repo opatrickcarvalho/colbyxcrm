@@ -393,7 +393,14 @@ export async function POST(request: Request) {
     // Persist everything in one shot. If /register failed we still
     // store the credentials and the error so the UI can guide the
     // user through a retry.
+    //
+    // `provider` must be set explicitly: an account switching over from
+    // UAZAPI already has a row with provider='uazapi', and leaving it
+    // untouched kept every send routed to UAZAPI despite the Meta
+    // credentials being saved here. The UAZAPI columns stay on the row
+    // so switching back reuses the same instance.
     const baseRow = {
+      provider: 'meta',
       phone_number_id,
       waba_id: waba_id || null,
       access_token: encryptedAccessToken,
